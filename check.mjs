@@ -37,6 +37,8 @@ ok(/id="overwrite-dialog"/.test(html) && /id="overwrite-confirm"/.test(html) && 
   // MDUI text-field 的浮动 label 单行不换行：超长 label 会把卡片撑出屏幕（移动端"输入框跑外面"的根因），label 必须短（前导空格排除 aria-label）
   const longLabels = src.match(/ label="[^"]{13,}"/g) || [];
   ok(longLabels.length === 0, 'text-field/select 的 label 不应超过 12 个字符（超长浮动 label 会撑破移动端布局）：' + longLabels.join(' | '));
+  // 默认源文件应优先选第一个能识别出官方语言的（en_US.lang 等），否则上传顺序一变就选到 readme.lang 之类
+  ok(src.includes('pickDefaultSourceFile(group.files)') && src.includes('BEDROCK_LANGUAGES[normalizeLanguage(item.language)]'), '默认源文件应优先选第一个能识别官方语言的文件（pickDefaultSourceFile）');
 
 ok(html.includes('./static/js/app.js') && html.includes('./static/css/styles.css') && html.includes('./static/css/fonts.css') && !/src="\.\/app\.js"/.test(html) && !/href="\.\/styles\.css"/.test(html), 'index.html 静态资源应引用 static 目录（app.js/styles.css/fonts.css）');
   ok(css.includes("'Alibaba PuHuiTi', Inter"), 'styles.css 全局字体栈应以 Alibaba PuHuiTi 开头（否则字体文件不会被请求）');
@@ -96,7 +98,7 @@ const checks = `
   ok(!groupCard.toString().includes('>可修改<') && !renderSingle.toString().includes('>可修改<') && !renderSingleBatch.toString().includes('>可修改<'), '源文件预览框不应显示“可修改”标签');
   ok(!groupCard.toString().includes("item.language || '未识别语言'"), '语言文件列表不应显示语言代码卡片');
   ok(groupCard.toString().includes('个文件，点击展开') && groupCard.toString().indexOf('review-box') < groupCard.toString().indexOf('class="file-list"'), '整包模式语言文件列表应默认折叠');
-  ok(renderArchive.toString().includes("group.selection?.source || source.querySelectorAll('mdui-menu-item')[0]?.value"), '整包模式源语言应默认选择第一个选项');
+  ok(renderArchive.toString().includes("group.selection?.source || pickDefaultSourceFile(group.files)?.path"), '整包模式源语言应默认选择第一个能识别官方语言的文件');
   ok(fileLabel('zh_CN.lang', 'zh_CN') === 'zh_CN.lang（简体中文（中国大陆））', 'fileLabel 应输出“文件名（语言中文名）”');
   ok(fileLabel('custom.lang', null) === 'custom.lang', 'fileLabel 无语言时应退回纯文件名');
   ok(groupCard.toString().includes('fileLabel(item.fileName, item.language)') && generatedList.toString().includes('fileLabel('), '两个列表的文件名都应附带语言中文名');
@@ -227,7 +229,7 @@ const checks = `
   ok(translateGroup.toString().includes('archiveState()') && renderArchive.toString().includes('archiveState()'), '整包渲染与翻译应通过 archiveState 兼容两种模式');
   // 一键翻译：源文件取每包第 1 个，冲突检测 + 弹窗勾选覆盖（默认不勾）
   ok(typeof packFirstSource === 'function' && typeof packHasTarget === 'function' && typeof translateAllPacks === 'function' && typeof runBatchTranslate === 'function', '一键翻译核心函数应存在');
-  ok(packFirstSource.toString().includes('!item.deleted') && translateAllPacks.toString().includes('packFirstSource'), '一键翻译应取每包第 1 个未删除语言文件');
+  ok(packFirstSource.toString().includes('pickDefaultSourceFile') && translateAllPacks.toString().includes('packFirstSource'), '一键翻译应取每包默认源文件（第一个能识别官方语言的）');
   ok(packHasTarget.toString().includes('!item.deleted && item.language === target') && packHasTarget.toString().includes('generated'), '冲突判定应与 targetOptions 一致（已有文件+已生成结果）');
   ok(renderArchive.toString().includes('translate-all-packs') && renderArchive.toString().includes('batch-target-lang'), '批量模式顶部应渲染一键翻译卡');
   ok(translateAllPacks.toString().includes('batch-translate-dialog') && translateAllPacks.toString().includes('data-batch-pack'), '有冲突包时应弹窗列出复选框（默认不勾）');

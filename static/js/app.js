@@ -232,11 +232,11 @@ function renderArchive() {
   // 一键翻译：目标语言选择写入 state，重渲染后不丢失
   root.querySelector('#batch-target-lang')?.addEventListener('change', (event) => { state.archiveBatch.translateTarget = event.target.value; });
   root.querySelector('#translate-all-packs')?.addEventListener('click', translateAllPacks);
-  // 恢复或默认选择各分组的源文件（默认第一个），并恢复目标语言选择
+  // 恢复或默认选择各分组的源文件（默认第一个能识别出语言的），并恢复目标语言选择
   as.groups.forEach((group, groupIndex) => {
     const source = root.querySelector(`[data-source-group="${groupIndex}"]`);
     const target = root.querySelector(`[data-target-group="${groupIndex}"]`);
-    if (source) source.value = group.selection?.source || source.querySelectorAll('mdui-menu-item')[0]?.value || '';
+    if (source) source.value = group.selection?.source || pickDefaultSourceFile(group.files)?.path || '';
     if (target && group.selection) target.value = group.selection.targets;
     // 选择变化实时存入 group.selection：其他分组翻译触发重渲染时，本分组已选的源/目标不丢失
     source?.addEventListener('change', () => { group.selection = { source: source.value, targets: getSelected(target) }; });
@@ -246,10 +246,16 @@ function renderArchive() {
 
 function getSelected(select) { return Array.isArray(select?.value) ? select.value : (select?.value ? [select.value] : []); }
 
-// 每个包的默认源文件：第 1 个 texts 分组的第 1 个未删除语言文件
+// 默认源文件：优先第一个能识别出官方语言的（en_US.lang / en_GB.lang 等，含 en_UK 别名映射），都识别不出才回落第一个
+function pickDefaultSourceFile(files) {
+  const pool = files.filter((item) => !item.deleted && ['lang', 'txt'].includes(item.extension));
+  return pool.find((item) => BEDROCK_LANGUAGES[normalizeLanguage(item.language)]) || pool[0];
+}
+
+// 每个包的默认源文件：第 1 个 texts 分组的默认语言文件
 function packFirstSource(pack) {
   for (const group of pack.groups) {
-    const file = group.files.find((item) => !item.deleted && ['lang', 'txt'].includes(item.extension));
+    const file = pickDefaultSourceFile(group.files);
     if (file) return { group, file };
   }
   return null;
