@@ -29,6 +29,9 @@ ok(/id="overwrite-dialog"/.test(html) && /id="overwrite-confirm"/.test(html) && 
   // 深色模式必须切换 MDUI 官方类名，否则 MDUI 组件（tabs/输入框/下拉栏）tokens 不变黑
   ok(src.includes("classList.toggle('mdui-theme-dark')"), '主题切换应切换 MDUI 官方类 mdui-theme-dark');
   ok(css.includes(':root.mdui-theme-dark') && !css.includes(':root.dark'), 'styles.css 深色变量应挂在 :root.mdui-theme-dark 下');
+  // 品牌主色 #FFA500：MDUI 主色 token 全套覆盖（"r, g, b" 三元组格式，组件内 rgb() 包一层）+ theme-color 同步
+  ok(css.includes('--mdui-color-primary-light: 255, 165, 0') && css.includes('--mdui-color-primary-dark: 255, 165, 0'), 'styles.css 应覆盖 MDUI 主色 token 为 #FFA500 的 RGB 三元组（light/dark）');
+  ok(html.includes('<meta name="theme-color" content="#FFA500">'), 'index.html theme-color 应为品牌色 #FFA500');
 ok(html.includes('./static/js/app.js') && html.includes('./static/css/styles.css') && html.includes('./static/css/fonts.css') && !/src="\.\/app\.js"/.test(html) && !/href="\.\/styles\.css"/.test(html), 'index.html 静态资源应引用 static 目录（app.js/styles.css/fonts.css）');
   ok(css.includes("'Alibaba PuHuiTi', Inter"), 'styles.css 全局字体栈应以 Alibaba PuHuiTi 开头（否则字体文件不会被请求）');
 // 文件名控件已移到 JS 渲染的导出区：index.html 导入卡片不应残留旧控件（否则重复出现两套输入框）

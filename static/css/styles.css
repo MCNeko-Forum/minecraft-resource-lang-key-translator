@@ -5,13 +5,23 @@
   --text: #1a1b20;
   --muted: #686b75;
   --border: #e3e5ed;
-  --primary: #465d91;
+  --primary: #b25e00; /* 文字/链接场景的橙色（#FFA500 在白底对比度不足 2:1，加深一档） */
   --danger: #ba1a1a;
+  /* 品牌主色 #FFA500：覆盖 MDUI 默认紫色全套 token（filled/tonal 按钮、tab、focus 全部跟随）。
+     MDUI token 格式为 "r, g, b" 三元组（组件内部 rgb(var(...)) 包一层消费），不能写 hex */
+  --mdui-color-primary-light: 255, 165, 0;
+  --mdui-color-on-primary-light: 64, 45, 0;
+  --mdui-color-primary-container-light: 255, 221, 179;
+  --mdui-color-on-primary-container-light: 74, 40, 0;
+  --mdui-color-primary-dark: 255, 165, 0;
+  --mdui-color-on-primary-dark: 64, 45, 0;
+  --mdui-color-primary-container-dark: 107, 64, 0;
+  --mdui-color-on-primary-container-dark: 255, 221, 179;
   font-family: 'Alibaba PuHuiTi', Inter, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
 }
 
 /* 深色模式复用 MDUI 官方类名 mdui-theme-dark（html 上切换一个 class 即可让 MDUI 组件 tokens 同步变黑） */
-:root.mdui-theme-dark { color-scheme: dark; --page-bg: #111318; --card-bg: #1b1d23; --text: #e4e2e9; --muted: #bfc2cc; --border: #41434b; --primary: #b4c5ff; --danger: #ffb4ab; }
+:root.mdui-theme-dark { color-scheme: dark; --page-bg: #111318; --card-bg: #1b1d23; --text: #e4e2e9; --muted: #bfc2cc; --border: #41434b; --primary: #FFA500; --danger: #ffb4ab; }
 * { box-sizing: border-box; }
 /* 29 种语言的下拉菜单超出屏幕：限制高度并可滚动（menu part 即内部 mdui-menu） */
 mdui-select::part(menu) { max-height: min(360px, 60vh); overflow-y: auto; }
@@ -22,7 +32,9 @@ mdui-select::part(menu) { max-height: min(360px, 60vh); overflow-y: auto; }
 body { margin: 0; background: var(--page-bg); color: var(--text); }
 mdui-top-app-bar { --mdui-color-surface: var(--card-bg); }
 .page-shell { width: min(1180px, calc(100% - 32px)); margin: 28px auto 64px; }
-mdui-tabs { margin-bottom: 20px; }
+mdui-tabs { margin-bottom: 20px; --mdui-color-primary: 178, 94, 0; }
+/* 深色模式下 #FFA500 直接可用，还原品牌本色 */
+:root.mdui-theme-dark mdui-tabs { --mdui-color-primary: 255, 165, 0; }
 /* 标签页强制单行 + 可横向滑动（4 个长文字 tab 在窄屏下不换行不挤压） */
 mdui-tabs::part(container) { flex-wrap: nowrap; overflow-x: auto; }
 mdui-tabs mdui-tab { flex-shrink: 0; white-space: nowrap; }
