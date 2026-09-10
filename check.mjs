@@ -16,6 +16,7 @@ const css = readFileSync(new URL('./static/css/styles.css', import.meta.url), 'u
 ok(/id="overwrite-dialog"/.test(html) && /id="overwrite-confirm"/.test(html) && /id="overwrite-cancel"/.test(html), 'index.html 应有覆盖确认弹窗 overwrite-dialog 及其按钮');
   ok(/value="info">信息/.test(html) && /data-mode="info"/.test(html), 'index.html 应有“信息”标签页及对应面板');
   ok(html.includes('https://github.com/MCNeko-Forum/minecraft-resource-lang-key-translator'), '信息页应包含本项目仓库地址');
+  ok(html.includes('MIT License'), '信息页应包含 MIT 协议链接');
 ok(html.includes('./static/js/app.js') && html.includes('./static/css/styles.css') && html.includes('./static/css/fonts.css') && !/src="\.\/app\.js"/.test(html) && !/href="\.\/styles\.css"/.test(html), 'index.html 静态资源应引用 static 目录（app.js/styles.css/fonts.css）');
   ok(css.includes("'Alibaba PuHuiTi', Inter"), 'styles.css 全局字体栈应以 Alibaba PuHuiTi 开头（否则字体文件不会被请求）');
 // 文件名控件已移到 JS 渲染的导出区：index.html 导入卡片不应残留旧控件（否则重复出现两套输入框）

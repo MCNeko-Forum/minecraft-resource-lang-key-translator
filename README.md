@@ -43,3 +43,7 @@ node check.mjs
 ## 本仓库
 
 <https://github.com/MCNeko-Forum/minecraft-resource-lang-key-translator>
+
+## 开源协议
+
+[MIT License](./LICENSE)
