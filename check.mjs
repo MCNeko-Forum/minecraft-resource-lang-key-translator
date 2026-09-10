@@ -32,6 +32,12 @@ ok(/id="overwrite-dialog"/.test(html) && /id="overwrite-confirm"/.test(html) && 
   // 品牌主色 #FFA500：MDUI 主色 token 全套覆盖（"r, g, b" 三元组格式，组件内 rgb() 包一层）+ theme-color 同步
   ok(css.includes('--mdui-color-primary-light: 255, 165, 0') && css.includes('--mdui-color-primary-dark: 255, 165, 0'), 'styles.css 应覆盖 MDUI 主色 token 为 #FFA500 的 RGB 三元组（light/dark）');
   ok(html.includes('<meta name="theme-color" content="#FFA500">'), 'index.html theme-color 应为品牌色 #FFA500');
+  // 移动端预览框溢出防护：min-width:0 切断 min-content 传播链 + align-self:stretch 保证 column 布局下占满行宽
+  ok(css.includes('align-self: stretch') && css.includes('.review-box { border: 1px solid var(--border); border-radius: 12px; min-width: 0; }'), 'styles.css 预览框应有移动端溢出防护（min-width:0 + align-self:stretch）');
+  // MDUI text-field 的浮动 label 单行不换行：超长 label 会把卡片撑出屏幕（移动端"输入框跑外面"的根因），label 必须短（前导空格排除 aria-label）
+  const longLabels = src.match(/ label="[^"]{13,}"/g) || [];
+  ok(longLabels.length === 0, 'text-field/select 的 label 不应超过 12 个字符（超长浮动 label 会撑破移动端布局）：' + longLabels.join(' | '));
+
 ok(html.includes('./static/js/app.js') && html.includes('./static/css/styles.css') && html.includes('./static/css/fonts.css') && !/src="\.\/app\.js"/.test(html) && !/href="\.\/styles\.css"/.test(html), 'index.html 静态资源应引用 static 目录（app.js/styles.css/fonts.css）');
   ok(css.includes("'Alibaba PuHuiTi', Inter"), 'styles.css 全局字体栈应以 Alibaba PuHuiTi 开头（否则字体文件不会被请求）');
 // 文件名控件已移到 JS 渲染的导出区：index.html 导入卡片不应残留旧控件（否则重复出现两套输入框）

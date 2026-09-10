@@ -49,6 +49,9 @@ h1, h2, h3, p { margin: 0; }
 h1 { font-size: 1.3rem; margin-bottom: 6px; }
 h2 { font-size: 1.05rem; }
 h3 { font-size: .95rem; }
+/* 移动端长路径/长文件名不可断行会把内容推出卡片（卡片 overflow:hidden 裁掉＝"跑外面"），标题与 summary 一律允许任意断行 */
+h1, h2, h3 { overflow-wrap: anywhere; }
+.review-box summary strong { overflow-wrap: anywhere; }
 p, .muted { color: var(--muted); }
 .import-card > mdui-button { margin-top: 20px; }
 .workspace { display: grid; gap: 16px; }
@@ -61,25 +64,27 @@ p, .muted { color: var(--muted); }
 .folder-name-input:hover { border-color: var(--border); }
 .folder-name-input:focus { outline: none; border-color: var(--primary); background: var(--page-bg); }
 #batch-translate-list { display: grid; gap: 4px; margin-top: 12px; max-height: 40vh; overflow-y: auto; }
-.file-row { padding: 12px; border: 1px solid var(--border); border-radius: 12px; flex-wrap: wrap; }
-/* 整包模式文件行内的源文件预览框占满整行 */
-.file-row > .review-box { flex-basis: 100%; margin-top: 4px; }
-.file-meta { display: grid; gap: 4px; min-width: 0; }
+.file-row { padding: 12px; border: 1px solid var(--border); border-radius: 12px; flex-wrap: wrap; min-width: 0; }
+/* 整包模式文件行内的源文件预览框占满整行；align-self:stretch 兼顾移动端 column 布局（此时 flex-basis 是高度、width 百分比会被忽略导致收缩/溢出） */
+.file-row > .review-box { flex-basis: 100%; align-self: stretch; margin-top: 4px; }
+.file-meta { display: grid; gap: 4px; min-width: 0; overflow-wrap: anywhere; }
 .file-meta strong { overflow-wrap: anywhere; }
 .file-actions { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
 /* 已翻译文件列表：外观与上方文件列表一致（同边框、同圆角） */
 .generated-list { display: grid; gap: 10px; margin-top: 16px; }
-.review-box { border: 1px solid var(--border); border-radius: 12px; }
+/* min-width:0 防止内部长行把 flex/grid item 撑出卡片（预览框溢出的根因） */
+.review-box { border: 1px solid var(--border); border-radius: 12px; min-width: 0; }
 .review-box summary { display: flex; align-items: center; gap: 10px; padding: 12px; cursor: pointer; list-style: none; flex-wrap: wrap; }
 .review-box summary::-webkit-details-marker { display: none; }
 .review-box .expand-icon { transition: transform .2s; }
 .review-box[open] .expand-icon { transform: rotate(180deg); }
 .review-box .delete-generated { margin-left: auto; }
 .review-editor { padding: 0 12px 12px; }
-.review-editor mdui-text-field { width: 100%; }
+.review-editor mdui-text-field { width: 100%; max-width: 100%; min-width: 0; }
 .config-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 14px; margin-top: 18px; }
 .export-grid + .toolbar { margin-top: 16px; }
 .stats { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 16px; }
 .empty { padding: 30px; text-align: center; border: 1px dashed var(--border); border-radius: 12px; color: var(--muted); }
 .danger { color: var(--danger); }
-@media (max-width: 640px) { .page-shell { width: min(100% - 20px, 1180px); margin-top: 14px; } .card-heading { align-items: flex-start; flex-direction: column; } .file-row { align-items: flex-start; flex-direction: column; } }
+/* 移动端 column 布局必须 nowrap：column+wrap 会让 Chrome 把后续子项排到右侧新列（预览框横移出屏幕＝"输入框跑外面"的根因）；stretch 让各子项占满行宽 */
+@media (max-width: 640px) { .page-shell { width: min(100% - 20px, 1180px); margin-top: 14px; } .card-heading { align-items: flex-start; flex-direction: column; } .file-row { align-items: stretch; flex-direction: column; flex-wrap: nowrap; } }
