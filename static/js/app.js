@@ -18,12 +18,27 @@ const archiveState = () => isBatchMode() ? state.archiveBatch : state.archive;
 const singleState = () => isBatchMode() ? state.singleBatch : state.single;
 const archiveRoot = () => $(isBatchMode() ? 'archive-batch-workspace' : 'archive-workspace');
 
+const applyMode = (mode) => {
+  state.mode = mode;
+  document.querySelectorAll('.mode-panel').forEach((panel) => { panel.hidden = panel.dataset.mode !== mode; });
+};
+
 $('mode-tabs').addEventListener('change', (event) => {
-  state.mode = event.target.value;
-  document.querySelectorAll('.mode-panel').forEach((panel) => { panel.hidden = panel.dataset.mode !== state.mode; });
+  applyMode(event.target.value);
+  // 写入 URL hash：刷新后保持在当前标签页，也可分享定位链接
+  history.replaceState(null, '', `#${event.target.value}`);
 });
 
-$('theme-toggle').addEventListener('click', () => document.documentElement.classList.toggle('dark'));
+// 初始化：优先恢复 URL hash 中的标签页（校验合法值，防注入任意 hash）
+(() => {
+  const hash = location.hash.slice(1);
+  const valid = [...document.querySelectorAll('mdui-tab')].some((tab) => tab.value === hash);
+  const mode = valid ? hash : 'archive';
+  $('mode-tabs').value = mode;
+  applyMode(mode);
+})();
+
+$('theme-toggle').addEventListener('click', () => document.documentElement.classList.toggle('mdui-theme-dark'));
 $('archive-pick').addEventListener('click', () => $('archive-input').click());
 $('single-pick').addEventListener('click', () => $('single-input').click());
 $('archive-batch-pick').addEventListener('click', () => $('archive-batch-input').click());

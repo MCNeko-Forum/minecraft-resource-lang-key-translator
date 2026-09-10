@@ -4,6 +4,8 @@ import { readFileSync } from 'node:fs';
 const stub = () => ({ addEventListener() {}, classList: { toggle() {} }, style: {}, innerHTML: '', textContent: '', click() {}, open: false, value: '' });
 globalThis.document = { getElementById: () => stub(), querySelectorAll: () => [], querySelector: () => null, documentElement: { classList: { toggle() {} } }, createElement: () => stub() };
 globalThis.window = {};
+globalThis.location = { hash: '' };
+globalThis.history = { replaceState() {} };
 
 const ok = (condition, message) => { if (!condition) throw new Error('自检失败：' + message); };
 globalThis.ok = ok;
@@ -17,6 +19,16 @@ ok(/id="overwrite-dialog"/.test(html) && /id="overwrite-confirm"/.test(html) && 
   ok(/value="info">信息/.test(html) && /data-mode="info"/.test(html), 'index.html 应有“信息”标签页及对应面板');
   ok(html.includes('https://github.com/MCNeko-Forum/minecraft-resource-lang-key-translator'), '信息页应包含本项目仓库地址');
   ok(html.includes('MIT License'), '信息页应包含 MIT 协议链接');
+  ok(src.includes('history.replaceState') && src.includes("location.hash.slice(1)"), '切换标签页应写入 URL hash，刷新后恢复当前标签页');
+  // SEO：描述/关键词/Open Graph/JSON-LD/favicon/theme-color
+  ok(/name="description"/.test(html) && /name="keywords"/.test(html), 'index.html 应有 meta description 与 keywords（SEO）');
+  ok(/property="og:title"/.test(html) && /property="og:description"/.test(html) && /property="og:site_name"/.test(html), 'index.html 应有 Open Graph 标签（社交分享）');
+  ok(/rel="icon"/.test(html) && /name="theme-color"/.test(html), 'index.html 应有 favicon（data URI SVG）与 theme-color');
+  const ldJson = html.match(/<script type="application\/ld\+json">\s*([\s\S]*?)\s*<\/script>/)?.[1];
+  ok(ldJson && JSON.parse(ldJson)['@type'] === 'WebApplication', 'JSON-LD 结构化数据应为合法 JSON 的 WebApplication');
+  // 深色模式必须切换 MDUI 官方类名，否则 MDUI 组件（tabs/输入框/下拉栏）tokens 不变黑
+  ok(src.includes("classList.toggle('mdui-theme-dark')"), '主题切换应切换 MDUI 官方类 mdui-theme-dark');
+  ok(css.includes(':root.mdui-theme-dark') && !css.includes(':root.dark'), 'styles.css 深色变量应挂在 :root.mdui-theme-dark 下');
 ok(html.includes('./static/js/app.js') && html.includes('./static/css/styles.css') && html.includes('./static/css/fonts.css') && !/src="\.\/app\.js"/.test(html) && !/href="\.\/styles\.css"/.test(html), 'index.html 静态资源应引用 static 目录（app.js/styles.css/fonts.css）');
   ok(css.includes("'Alibaba PuHuiTi', Inter"), 'styles.css 全局字体栈应以 Alibaba PuHuiTi 开头（否则字体文件不会被请求）');
 // 文件名控件已移到 JS 渲染的导出区：index.html 导入卡片不应残留旧控件（否则重复出现两套输入框）

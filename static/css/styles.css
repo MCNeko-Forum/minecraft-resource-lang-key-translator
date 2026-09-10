@@ -10,7 +10,8 @@
   font-family: 'Alibaba PuHuiTi', Inter, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
 }
 
-:root.dark { color-scheme: dark; --page-bg: #111318; --card-bg: #1b1d23; --text: #e4e2e9; --muted: #bfc2cc; --border: #41434b; --primary: #b4c5ff; --danger: #ffb4ab; }
+/* 深色模式复用 MDUI 官方类名 mdui-theme-dark（html 上切换一个 class 即可让 MDUI 组件 tokens 同步变黑） */
+:root.mdui-theme-dark { color-scheme: dark; --page-bg: #111318; --card-bg: #1b1d23; --text: #e4e2e9; --muted: #bfc2cc; --border: #41434b; --primary: #b4c5ff; --danger: #ffb4ab; }
 * { box-sizing: border-box; }
 /* 29 种语言的下拉菜单超出屏幕：限制高度并可滚动（menu part 即内部 mdui-menu） */
 mdui-select::part(menu) { max-height: min(360px, 60vh); overflow-y: auto; }
