@@ -117,8 +117,8 @@ async function parseArchiveGroups(file) {
   return [...groupMap.values()].filter((group) => group.files.some((item) => ['lang', 'txt'].includes(item.extension)));
 }
 
-// 双后缀 + 浏览器重复下载的副本标记：.mcpack.zip / .mcpack (1).zip / .mcpack（１）.zip / .mcpack(1).zip（半角/全角空格括号数字、无空格均匹配）
-const DOUBLE_EXT_RE = /\.(mcpack|mcaddon)(?:[\s\u3000]*[（(][\s\u3000]*[0-9０-９]+[\s\u3000]*[)）])?\.zip$/i;
+// 双后缀 + 浏览器重复下载的副本标记：.mcpack.zip / .mcpack (1).zip / .mcpack（副本2）.zip / .mcpack(copy).zip（括号内容不限数字，半角/全角空格括号、无空格均匹配）
+const DOUBLE_EXT_RE = /\.(mcpack|mcaddon)(?:[\s\u3000]*[（(][^（()）]*[)）])?\.zip$/i;
 // 导出后缀识别：双后缀识别为 mcpack/mcaddon（去除结尾 .zip），其它后缀回退 zip
 function archiveExtOf(fileName) {
   const lower = fileName.toLowerCase();
