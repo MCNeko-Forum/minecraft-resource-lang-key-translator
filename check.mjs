@@ -104,6 +104,10 @@ const checks = `
   ok(archiveExtOf('foo.mcpack.zip') === 'mcpack' && archiveExtOf('foo.mcpack (1).zip') === 'mcpack' && archiveExtOf('foo.mcpack(1).zip') === 'mcpack' && archiveExtOf('foo.mcaddon（２）.zip') === 'mcaddon' && archiveExtOf('FOO.MCPACK　（3）.ZIP') === 'mcpack', 'archiveExtOf 应识别半角/全角/无空格的副本标记双后缀');
   ok(archiveExtOf('foo.mcpack (copy).zip') === 'mcpack' && archiveExtOf('foo.mcpack（副本2）.zip') === 'mcpack' && archiveExtOf('foo.mcaddon(已转换).zip') === 'mcaddon', 'archiveExtOf 括号内容不限数字（copy/副本/文字）');
   ok(archiveExtOf('foo.mcpack (1)(2)(3).zip') === 'mcpack' && archiveExtOf('foo.mcaddon（1）（2）.zip') === 'mcaddon', 'archiveExtOf 应识别多重括号组 (1)(2)(3)');
+  // .mcpack/.mcaddon 与 .zip 之间任意文本（不含点）都视为副本标记：name.mcaddon - 副本.zip → name.mcaddon
+  ok(archiveExtOf('name.mcaddon - 副本.zip') === 'mcaddon' && packBaseName('name.mcaddon - 副本.zip') === 'name', '副本标记应为任意文本（- 副本 等）不限括号');
+  ok(archiveExtOf('foo.MCPACK - copy 2.zip') === 'mcpack' && packBaseName('foo.MCPACK - copy 2.zip') === 'foo', '任意文本副本标记应大小写不敏感');
+  ok(archiveExtOf('my.mcpack.collection.zip') === 'zip' && packBaseName('my.mcpack.collection.zip') === 'my.mcpack.collection', '中间含点的 .mcpack.collection.zip 不算双后缀（防误吞普通 zip），回落 zip');
   ok(packBaseName('foo.mcpack (1)(2)(3).zip') === 'foo', 'packBaseName 应整体去除多重括号组');
   ok(archiveExtOf('plain.zip') === 'zip' && archiveExtOf('pack.mcpack') === 'mcpack' && archiveExtOf('x.rar') === 'zip', 'archiveExtOf 普通 zip/单后缀/回落判定应正确');
   ok(typeof packBaseName === 'function' && packBaseName('foo.mcpack (1).zip') === 'foo' && packBaseName('bar.mcaddon（2）.zip') === 'bar' && packBaseName('foo.mcpack (copy).zip') === 'foo' && packBaseName('plain.zip') === 'plain' && packBaseName('pack.mcpack') === 'pack', 'packBaseName 应去除双后缀与副本标记（含非数字内容）得到基础名');
