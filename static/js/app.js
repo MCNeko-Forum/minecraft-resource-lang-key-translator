@@ -118,8 +118,9 @@ async function parseArchiveGroups(file) {
 }
 
 async function doLoadArchive(file) {
-  // 下载文件名与后缀自动填入：后缀按上传文件识别，其它后缀回退 zip
-  const ext = file.name.split('.').pop().toLowerCase();
+  // 下载文件名与后缀自动填入：后缀按上传文件识别，其它后缀回退 zip；.mcpack.zip/.mcaddon.zip 双后缀识别为 mcpack/mcaddon（即去除结尾 .zip）
+  const lower = file.name.toLowerCase();
+  const ext = /\.(mcpack|mcaddon)\.zip$/.test(lower) ? lower.slice(0, -4).split('.').pop() : lower.split('.').pop();
   state.archive = { file, groups: [], pendingDelete: null, exportName: stripExt(file.name), exportExt: ['mcpack', 'mcaddon', 'zip'].includes(ext) ? ext : 'zip' };
   $('archive-name').textContent = file.name;
   try {

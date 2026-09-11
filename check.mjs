@@ -99,6 +99,8 @@ const checks = `
   ok(!groupCard.toString().includes("item.language || '未识别语言'"), '语言文件列表不应显示语言代码卡片');
   ok(groupCard.toString().includes('个文件，点击展开') && groupCard.toString().indexOf('review-box') < groupCard.toString().indexOf('class="file-list"'), '整包模式语言文件列表应默认折叠');
   ok(renderArchive.toString().includes("group.selection?.source || pickDefaultSourceFile(group.files)?.path"), '整包模式源语言应默认选择第一个能识别官方语言的文件');
+  // .mcpack.zip / .mcaddon.zip 双后缀：导出格式应识别为 mcpack/mcaddon（去除结尾 .zip）
+  ok(doLoadArchive.toString().includes('mcaddon)\\\\.zip') || doLoadArchive.toString().includes('mcaddon)\\.zip'), '整包模式 .mcpack.zip/.mcaddon.zip 应识别为对应导出格式');
   ok(fileLabel('zh_CN.lang', 'zh_CN') === 'zh_CN.lang（简体中文（中国大陆））', 'fileLabel 应输出“文件名（语言中文名）”');
   ok(fileLabel('custom.lang', null) === 'custom.lang', 'fileLabel 无语言时应退回纯文件名');
   ok(groupCard.toString().includes('fileLabel(item.fileName, item.language)') && generatedList.toString().includes('fileLabel('), '两个列表的文件名都应附带语言中文名');
