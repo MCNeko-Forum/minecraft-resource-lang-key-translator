@@ -100,10 +100,12 @@ const checks = `
   ok(groupCard.toString().includes('个文件，点击展开') && groupCard.toString().indexOf('review-box') < groupCard.toString().indexOf('class="file-list"'), '整包模式语言文件列表应默认折叠');
   ok(renderArchive.toString().includes("group.selection?.source || pickDefaultSourceFile(group.files)?.path"), '整包模式源语言应默认选择第一个能识别官方语言的文件');
   // .mcpack.zip / .mcaddon.zip 双后缀：导出格式应识别为 mcpack/mcaddon（去除结尾 .zip），单包与批量共用 archiveExtOf
-  ok(typeof archiveExtOf === 'function' && archiveExtOf.toString().includes('mcpack|mcaddon'), 'archiveExtOf 应识别 .mcpack.zip/.mcaddon.zip 双后缀');
-  ok(archiveExtOf('foo.mcpack.zip') === 'mcpack' && archiveExtOf('bar.MCADDON.ZIP') === 'mcaddon' && archiveExtOf('plain.zip') === 'zip' && archiveExtOf('pack.mcpack') === 'mcpack' && archiveExtOf('x.rar') === 'zip', 'archiveExtOf 双后缀/大小写/回落判定应正确');
+  // 双后缀 + 副本标记：半角/全角/无空格空格括号数字都要识别（.mcpack (1).zip / .mcpack（１）.zip / .mcpack(1).zip）
+  ok(archiveExtOf('foo.mcpack.zip') === 'mcpack' && archiveExtOf('foo.mcpack (1).zip') === 'mcpack' && archiveExtOf('foo.mcpack(1).zip') === 'mcpack' && archiveExtOf('foo.mcaddon（２）.zip') === 'mcaddon' && archiveExtOf('FOO.MCPACK　（3）.ZIP') === 'mcpack', 'archiveExtOf 应识别半角/全角/无空格的副本标记双后缀');
+  ok(archiveExtOf('plain.zip') === 'zip' && archiveExtOf('pack.mcpack') === 'mcpack' && archiveExtOf('x.rar') === 'zip', 'archiveExtOf 普通 zip/单后缀/回落判定应正确');
+  ok(typeof packBaseName === 'function' && packBaseName('foo.mcpack (1).zip') === 'foo' && packBaseName('bar.mcaddon（2）.zip') === 'bar' && packBaseName('plain.zip') === 'plain' && packBaseName('pack.mcpack') === 'pack', 'packBaseName 应去除双后缀与副本标记得到基础名');
   ok(doLoadArchiveBatch.toString().includes('archiveExtOf(file.name)'), '批量整包模式后缀识别应复用 archiveExtOf');
-  ok(exportArchive.toString().includes('stripExt(stripExt(pack.file.name))') && downloadEachPack.toString().includes('stripExt(stripExt(pack.file.name))'), '批量导出文件名应双重 stripExt 防止 foo.mcpack.mcpack');
+  ok(exportArchive.toString().includes('packBaseName(pack.file.name)') && downloadEachPack.toString().includes('packBaseName(pack.file.name)'), '批量导出（打包/逐包）文件名应使用 packBaseName 去除双后缀与副本标记');
   ok(fileLabel('zh_CN.lang', 'zh_CN') === 'zh_CN.lang（简体中文（中国大陆））', 'fileLabel 应输出“文件名（语言中文名）”');
   ok(fileLabel('custom.lang', null) === 'custom.lang', 'fileLabel 无语言时应退回纯文件名');
   ok(groupCard.toString().includes('fileLabel(item.fileName, item.language)') && generatedList.toString().includes('fileLabel('), '两个列表的文件名都应附带语言中文名');

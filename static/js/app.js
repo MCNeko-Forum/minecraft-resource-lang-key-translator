@@ -117,16 +117,25 @@ async function parseArchiveGroups(file) {
   return [...groupMap.values()].filter((group) => group.files.some((item) => ['lang', 'txt'].includes(item.extension)));
 }
 
-// 导出后缀识别：.mcpack.zip/.mcaddon.zip 双后缀识别为 mcpack/mcaddon（去除结尾 .zip），其它后缀回退 zip
+// 双后缀 + 浏览器重复下载的副本标记：.mcpack.zip / .mcpack (1).zip / .mcpack（１）.zip / .mcpack(1).zip（半角/全角空格括号数字、无空格均匹配）
+const DOUBLE_EXT_RE = /\.(mcpack|mcaddon)(?:[\s\u3000]*[（(][\s\u3000]*[0-9０-９]+[\s\u3000]*[)）])?\.zip$/i;
+// 导出后缀识别：双后缀识别为 mcpack/mcaddon（去除结尾 .zip），其它后缀回退 zip
 function archiveExtOf(fileName) {
   const lower = fileName.toLowerCase();
-  const ext = /\.(mcpack|mcaddon)\.zip$/.test(lower) ? lower.slice(0, -4).split('.').pop() : lower.split('.').pop();
+  const m = lower.match(DOUBLE_EXT_RE);
+  if (m) return m[1];
+  const ext = lower.split('.').pop();
   return ['mcpack', 'mcaddon', 'zip'].includes(ext) ? ext : 'zip';
+}
+// 包基础文件名：双后缀（含副本标记）整体去除（foo.mcpack (1).zip → foo），单后缀走 stripExt
+function packBaseName(fileName) {
+  const name = String(fileName).trim();
+  return DOUBLE_EXT_RE.test(name) ? name.replace(DOUBLE_EXT_RE, '') : stripExt(name);
 }
 
 async function doLoadArchive(file) {
   // 下载文件名与后缀自动填入
-  state.archive = { file, groups: [], pendingDelete: null, exportName: stripExt(file.name), exportExt: archiveExtOf(file.name) };
+  state.archive = { file, groups: [], pendingDelete: null, exportName: packBaseName(file.name), exportExt: archiveExtOf(file.name) };
   $('archive-name').textContent = file.name;
   try {
     state.archive.groups = await parseArchiveGroups(file);
@@ -474,8 +483,8 @@ async function exportArchive() {
     for (const pack of as.packs) {
       const zip = await JSZip.loadAsync(pack.file);
       await applyPackChanges(zip, pack.groups);
-      // 双后缀（.mcpack.zip）文件名要去两截尾巴再拼 ext，否则产出 foo.mcpack.mcpack
-      outer.file(`${stripExt(stripExt(pack.file.name))}.${pack.ext}`, await zip.generateAsync({ type: 'blob' }));
+      // packBaseName 去除双后缀/副本标记（foo.mcpack (1).zip → foo），防止产出 foo.mcpack (1).mcpack
+      outer.file(`${packBaseName(pack.file.name)}.${pack.ext}`, await zip.generateAsync({ type: 'blob' }));
     }
     downloadBlob(await outer.generateAsync({ type: 'blob' }), `${stripExt(as.exportName) || '批量导出'}.zip`);
     snackbar('已打包下载全部资源包');
@@ -495,7 +504,7 @@ async function downloadEachPack() {
   for (const pack of packs) {
     const zip = await JSZip.loadAsync(pack.file);
     await applyPackChanges(zip, pack.groups);
-    downloadBlob(await zip.generateAsync({ type: 'blob' }), `${stripExt(stripExt(pack.file.name))}.${pack.ext}`);
+    downloadBlob(await zip.generateAsync({ type: 'blob' }), `${packBaseName(pack.file.name)}.${pack.ext}`);
   }
   if (button) button.disabled = false;
   snackbar(`已触发 ${packs.length} 个下载任务`);
