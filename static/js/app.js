@@ -481,11 +481,17 @@ async function exportArchive() {
   if (as.packs) {
     // 批量：每个资源包独立处理后保留原后缀，统一打进外层 zip
     const outer = new JSZip();
+    // 重名包（如两次上传同名文件）在 zip 内同名 entry 会互相覆盖只剩一个，自动加 _1/_2 后缀分开
+    const used = new Set();
     for (const pack of as.packs) {
       const zip = await JSZip.loadAsync(pack.file);
       await applyPackChanges(zip, pack.groups);
       // packBaseName 去除双后缀/副本标记（foo.mcpack (1).zip → foo），防止产出 foo.mcpack (1).mcpack
-      outer.file(`${packBaseName(pack.file.name)}.${pack.ext}`, await zip.generateAsync({ type: 'blob' }));
+      const base = packBaseName(pack.file.name);
+      let name = `${base}.${pack.ext}`;
+      for (let n = 1; used.has(name); n += 1) name = `${base}_${n}.${pack.ext}`;
+      used.add(name);
+      outer.file(name, await zip.generateAsync({ type: 'blob' }));
     }
     downloadBlob(await outer.generateAsync({ type: 'blob' }), `${stripExt(as.exportName) || '批量导出'}.zip`);
     snackbar('已打包下载全部资源包');

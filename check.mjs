@@ -113,6 +113,7 @@ const checks = `
   ok(typeof packBaseName === 'function' && packBaseName('foo.mcpack (1).zip') === 'foo' && packBaseName('bar.mcaddon（2）.zip') === 'bar' && packBaseName('foo.mcpack (copy).zip') === 'foo' && packBaseName('plain.zip') === 'plain' && packBaseName('pack.mcpack') === 'pack', 'packBaseName 应去除双后缀与副本标记（含非数字内容）得到基础名');
   ok(doLoadArchiveBatch.toString().includes('archiveExtOf(file.name)'), '批量整包模式后缀识别应复用 archiveExtOf');
   ok(exportArchive.toString().includes('packBaseName(pack.file.name)') && downloadEachPack.toString().includes('packBaseName(pack.file.name)'), '批量导出（打包/逐包）文件名应使用 packBaseName 去除双后缀与副本标记');
+  ok(exportArchive.toString().includes('used.has(name)'), '打包下载全部应对重名包自动加 _1/_2 后缀（JSZip 同名 entry 会互相覆盖）');
   ok(fileLabel('zh_CN.lang', 'zh_CN') === 'zh_CN.lang（简体中文（中国大陆））', 'fileLabel 应输出“文件名（语言中文名）”');
   ok(fileLabel('custom.lang', null) === 'custom.lang', 'fileLabel 无语言时应退回纯文件名');
   ok(groupCard.toString().includes('fileLabel(item.fileName, item.language)') && generatedList.toString().includes('fileLabel('), '两个列表的文件名都应附带语言中文名');
