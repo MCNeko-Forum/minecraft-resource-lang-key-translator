@@ -117,11 +117,16 @@ async function parseArchiveGroups(file) {
   return [...groupMap.values()].filter((group) => group.files.some((item) => ['lang', 'txt'].includes(item.extension)));
 }
 
-async function doLoadArchive(file) {
-  // 下载文件名与后缀自动填入：后缀按上传文件识别，其它后缀回退 zip；.mcpack.zip/.mcaddon.zip 双后缀识别为 mcpack/mcaddon（即去除结尾 .zip）
-  const lower = file.name.toLowerCase();
+// 导出后缀识别：.mcpack.zip/.mcaddon.zip 双后缀识别为 mcpack/mcaddon（去除结尾 .zip），其它后缀回退 zip
+function archiveExtOf(fileName) {
+  const lower = fileName.toLowerCase();
   const ext = /\.(mcpack|mcaddon)\.zip$/.test(lower) ? lower.slice(0, -4).split('.').pop() : lower.split('.').pop();
-  state.archive = { file, groups: [], pendingDelete: null, exportName: stripExt(file.name), exportExt: ['mcpack', 'mcaddon', 'zip'].includes(ext) ? ext : 'zip' };
+  return ['mcpack', 'mcaddon', 'zip'].includes(ext) ? ext : 'zip';
+}
+
+async function doLoadArchive(file) {
+  // 下载文件名与后缀自动填入
+  state.archive = { file, groups: [], pendingDelete: null, exportName: stripExt(file.name), exportExt: archiveExtOf(file.name) };
   $('archive-name').textContent = file.name;
   try {
     state.archive.groups = await parseArchiveGroups(file);
@@ -140,11 +145,10 @@ async function doLoadArchiveBatch(files) {
   const packs = state.archiveBatch.packs;
   let skipped = 0;
   for (const file of files) {
-    const ext = file.name.split('.').pop().toLowerCase();
     try {
       const groups = await parseArchiveGroups(file);
       if (!groups.length) { skipped += 1; continue; }
-      packs.push({ file, ext: ['mcpack', 'mcaddon', 'zip'].includes(ext) ? ext : 'zip', groups });
+      packs.push({ file, ext: archiveExtOf(file.name), groups });
     }
     catch (error) { snackbar(`资源包 "${file.name}" 读取失败：${error.message}`); }
   }
@@ -470,7 +474,8 @@ async function exportArchive() {
     for (const pack of as.packs) {
       const zip = await JSZip.loadAsync(pack.file);
       await applyPackChanges(zip, pack.groups);
-      outer.file(`${stripExt(pack.file.name)}.${pack.ext}`, await zip.generateAsync({ type: 'blob' }));
+      // 双后缀（.mcpack.zip）文件名要去两截尾巴再拼 ext，否则产出 foo.mcpack.mcpack
+      outer.file(`${stripExt(stripExt(pack.file.name))}.${pack.ext}`, await zip.generateAsync({ type: 'blob' }));
     }
     downloadBlob(await outer.generateAsync({ type: 'blob' }), `${stripExt(as.exportName) || '批量导出'}.zip`);
     snackbar('已打包下载全部资源包');
@@ -490,7 +495,7 @@ async function downloadEachPack() {
   for (const pack of packs) {
     const zip = await JSZip.loadAsync(pack.file);
     await applyPackChanges(zip, pack.groups);
-    downloadBlob(await zip.generateAsync({ type: 'blob' }), `${stripExt(pack.file.name)}.${pack.ext}`);
+    downloadBlob(await zip.generateAsync({ type: 'blob' }), `${stripExt(stripExt(pack.file.name))}.${pack.ext}`);
   }
   if (button) button.disabled = false;
   snackbar(`已触发 ${packs.length} 个下载任务`);
