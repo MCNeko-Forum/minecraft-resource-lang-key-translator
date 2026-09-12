@@ -1,7 +1,7 @@
 const state = {
   mode: 'archive',
   options: { stripCodes: true },
-  archive: { file: null, groups: [], pendingDelete: null, exportName: '', exportExt: 'zip' },
+  archive: { file: null, groups: [], manifests: [], manifestTarget: '', manifestDetected: '', pendingDelete: null, exportName: '', exportExt: 'zip' },
   single: { file: null, entries: [], lines: [], sourceLanguage: '', targetLanguage: 'zh_CN', results: [], pendingDelete: null, exportName: '' },
   // 批量模式独立状态：packs 每项 { file, ext, groups }，files 每项 { file, entries, lines, issues, sourceLanguage, targetLanguages, results }
   archiveBatch: { packs: [], groups: [], exportName: '批量导出', pendingDelete: null },
@@ -136,13 +136,37 @@ function packBaseName(fileName) {
 
 async function doLoadArchive(file) {
   // 下载文件名与后缀自动填入
-  state.archive = { file, groups: [], pendingDelete: null, exportName: packBaseName(file.name), exportExt: archiveExtOf(file.name) };
+  state.archive = { file, groups: [], manifests: [], manifestTarget: state.archive.manifestTarget, manifestDetected: '', pendingDelete: null, exportName: packBaseName(file.name), exportExt: archiveExtOf(file.name) };
   $('archive-name').textContent = file.name;
   try {
     state.archive.groups = await parseArchiveGroups(file);
+    // manifest.json 翻译：包内所有清单的 name/description（含 subpacks），无法解析的静默跳过
+    state.archive.manifests = await parseManifests(file);
     renderArchive();
     if (!state.archive.groups.length) snackbar('没有找到包含语言键值文件的 texts 文件夹');
   } catch (error) { snackbar(`资源包读取失败：${error.message}`); }
+}
+
+// 扫出包内所有 manifest.json（跳过 texts 文件夹内的），提取 header 与 subpacks 的 name/description 文本字段
+async function parseManifests(file) {
+  const zip = await JSZip.loadAsync(file);
+  const manifests = [];
+  for (const [path, entry] of Object.entries(zip.files)) {
+    if (entry.dir) continue;
+    const parts = path.toLowerCase().split('/');
+    if (parts.at(-1) !== 'manifest.json' || parts.includes('texts')) continue;
+    try {
+      const data = JSON.parse(await entry.async('string'));
+      // fields 持有目标对象的引用（m.data.header / m.data.subpacks[i]），翻译后直接写回再整体序列化
+      const fields = [];
+      const collect = (obj, key) => { if (obj && typeof obj[key] === 'string' && obj[key].trim()) fields.push({ obj, key, source: obj[key], translated: null, edited: null }); };
+      collect(data.header, 'name');
+      collect(data.header, 'description');
+      for (const sub of Array.isArray(data.subpacks) ? data.subpacks : []) { collect(sub, 'name'); collect(sub, 'description'); }
+      if (fields.length) manifests.push({ path, data, fields });
+    } catch { /* 静默忽略无法解析的 manifest */ }
+  }
+  return manifests;
 }
 
 async function loadArchiveBatch(files) {
@@ -212,10 +236,25 @@ function groupCard(group, groupIndex) {
     </mdui-card>`;
 }
 
+// manifest 翻译预览：翻译前显示原文，翻译后 header 的包名/描述用输入框可修改，subpacks 字段说明同步翻译
+function manifestPreview(manifest, index) {
+  const headerField = (key) => manifest.fields.find((field) => field.obj === manifest.data.header && field.key === key);
+  const name = headerField('name');
+  const description = headerField('description');
+  const subpackCount = manifest.fields.filter((field) => field.obj !== manifest.data.header).length;
+  const subpackNote = subpackCount ? `<span class="muted">另有 ${subpackCount} 个子包名称/描述同步翻译</span>` : '';
+  const translated = manifest.fields.some((field) => field.translated != null);
+  return `<div class="file-row">
+    <div class="file-meta"><strong>${escapeHtml(manifest.path)}</strong><span class="muted">${manifest.fields.length} 个文本字段</span></div>
+    ${translated ? '' : `<div class="file-meta"><span class="muted">包名：${escapeHtml(name?.source ?? '（无）')}</span><span class="muted">描述：${escapeHtml(description?.source ?? '（无）')}</span></div>`}
+    ${translated ? `<div class="review-editor">${name ? `<mdui-text-field variant="outlined" label="包名（译文）" value="${escapeHtml(name.edited ?? name.translated)}" data-manifest-edit="${index}:name"></mdui-text-field>` : ''}${description ? `<mdui-text-field variant="outlined" label="描述（译文）" value="${escapeHtml(description.edited ?? description.translated)}" data-manifest-edit="${index}:description"></mdui-text-field>` : ''}${subpackNote}</div>` : ''}
+  </div>`;
+}
+
 function renderArchive() {
   const root = archiveRoot();
   const as = archiveState();
-  if (!as.groups.length) { root.innerHTML = '<div class="empty">请选择资源包后查看识别结果</div>'; return; }
+  if (!as.groups.length && !as.manifests?.length) { root.innerHTML = '<div class="empty">请选择资源包后查看识别结果</div>'; return; }
   // 批量模式按包分节，每包一个标题；groupIndex 跨包连续编号，事件绑定与单包模式完全一致
   let offset = 0;
   const cards = as.packs
@@ -233,7 +272,14 @@ function renderArchive() {
   const translateAllCard = as.packs
     ? `<mdui-card class="export-card"><div class="config-grid"><mdui-select label="一键翻译至" value="${as.translateTarget || 'zh_CN'}" id="batch-target-lang">${languageMenuItems()}</mdui-select></div><div class="toolbar"><span class="muted">取每个包第 1 个语言文件作为源文件，生成所选目标语言</span><mdui-button variant="filled" id="translate-all-packs"><span class="material-icons" aria-hidden="true">translate</span>一键翻译</mdui-button></div></mdui-card>`
     : '';
-  root.innerHTML = `${translateAllCard}<div class="group-list">${cards}</div>${exportCard}`;
+  // 单包：manifest.json 翻译卡（目标语言单选，源语言自动识别）
+  const manifestCard = !as.packs && as.manifests?.length ? `<mdui-card class="group-card">
+      <div class="group-header"><div><h2>manifest.json 翻译</h2><p>翻译包名称与描述（含子包 subpacks），导出时写回清单</p></div><mdui-chip>${as.manifests.length} 个清单</mdui-chip></div>
+      <div class="file-list">${as.manifests.map((manifest, index) => manifestPreview(manifest, index)).join('')}</div>
+      <div class="config-grid"><mdui-select label="目标语言" value="${escapeHtml(as.manifestTarget || 'zh_CN')}" id="manifest-target-lang">${languageMenuItems()}</mdui-select></div>
+      <div class="toolbar"><span class="muted">源语言自动识别${as.manifestDetected ? `：${BEDROCK_LANGUAGES[as.manifestDetected] ?? as.manifestDetected}` : ''}</span><mdui-button variant="tonal" id="translate-manifest"><span class="material-icons" aria-hidden="true">translate</span>开始翻译</mdui-button></div>
+    </mdui-card>` : '';
+  root.innerHTML = `${translateAllCard}<div class="group-list">${cards}</div>${manifestCard}${exportCard}`;
   root.querySelectorAll('[data-delete]').forEach((button) => button.addEventListener('click', () => requestDelete(button.dataset.delete)));
   root.querySelectorAll('[data-delete-pack]').forEach((button) => button.addEventListener('click', () => requestDeletePack(Number(button.dataset.deletePack))));
   root.querySelectorAll('[data-delete-generated]').forEach((button) => button.addEventListener('click', (event) => { event.stopPropagation(); requestDeleteGenerated(button.dataset.deleteGenerated); }));
@@ -247,6 +293,15 @@ function renderArchive() {
   // 一键翻译：目标语言选择写入 state，重渲染后不丢失
   root.querySelector('#batch-target-lang')?.addEventListener('change', (event) => { state.archiveBatch.translateTarget = event.target.value; });
   root.querySelector('#translate-all-packs')?.addEventListener('click', translateAllPacks);
+  // manifest 翻译：目标语言选择与译文输入实时写回 state，重渲染（翻译、删除）后不丢失
+  root.querySelector('#manifest-target-lang')?.addEventListener('change', (event) => { as.manifestTarget = event.target.value; });
+  root.querySelector('#translate-manifest')?.addEventListener('click', translateManifest);
+  root.querySelectorAll('[data-manifest-edit]').forEach((field) => field.addEventListener('input', (event) => {
+    const [index, key] = event.target.dataset.manifestEdit.split(':');
+    const manifest = as.manifests?.[Number(index)];
+    const target = manifest?.fields.find((item) => item.obj === manifest.data.header && item.key === key);
+    if (target) target.edited = event.target.value;
+  }));
   // 恢复或默认选择各分组的源文件（默认第一个能识别出语言的），并恢复目标语言选择
   as.groups.forEach((group, groupIndex) => {
     const source = root.querySelector(`[data-source-group="${groupIndex}"]`);
@@ -328,6 +383,28 @@ async function runBatchTranslate(target, sources, override) {
   }
   renderArchive();
   snackbar(`一键翻译完成：${translated} 个包已生成，${skipped} 个包跳过`);
+}
+
+// manifest 翻译：所有清单文本合并一次请求；源语言用 translate.language.recognition 本地字符集识别（零请求），识别不出回落英语
+async function translateManifest() {
+  const as = state.archive;
+  const root = archiveRoot();
+  const target = root.querySelector('#manifest-target-lang')?.value;
+  if (!target) { snackbar('请选择目标语言'); return; }
+  as.manifestTarget = target;
+  const values = as.manifests.flatMap((manifest) => manifest.fields.map((field) => field.source));
+  if (!values.length) { snackbar('manifest 中没有可翻译的文本'); return; }
+  const recognized = window.translate?.language?.recognition?.(values.join(' '))?.languageName;
+  as.manifestDetected = Object.entries(TRANSLATE_LANGUAGES).find(([, name]) => name === recognized)?.[0] || 'en_US';
+  const button = root.querySelector('#translate-manifest');
+  if (button) { button.disabled = true; button.innerHTML = '<span class="material-icons spinning" aria-hidden="true">autorenew</span>翻译中'; }
+  const translated = await translateValues(values, as.manifestDetected, target);
+  let index = 0;
+  for (const manifest of as.manifests) {
+    for (const field of manifest.fields) { field.translated = translated[index]; field.edited = null; index += 1; }
+  }
+  renderArchive();
+  snackbar(`manifest 已翻译至 ${BEDROCK_LANGUAGES[target] ?? target}，导出时写回清单`);
 }
 
 async function translateGroup(groupIndex) {
@@ -462,8 +539,8 @@ function archiveExportName() {
   return `${stripExt(state.archive.exportName) || stripExt(state.archive.file.name)}.${state.archive.exportExt || 'zip'}`;
 }
 
-// 把删除标记与翻译结果写入包副本并同步语言清单，单包与批量模式共用
-async function applyPackChanges(zip, groups) {
+// 把删除标记与翻译结果写入包副本并同步语言清单，单包与批量模式共用；manifests 仅单包模式传入
+async function applyPackChanges(zip, groups, manifests) {
   for (const group of groups) {
     // 删除标记移除；源文件被手动修改过则写入修改后内容
     for (const item of group.files) {
@@ -473,11 +550,20 @@ async function applyPackChanges(zip, groups) {
     for (const generated of group.generated || []) zip.file(generated.path, generated.edited ?? renderLines(generated.parsed, generated.translated));
     await syncLanguagesManifest(zip, group);
   }
+  // manifest 翻译写回：fields 持有 data 内对象的引用，赋值后整体序列化（手动修改优先于机翻结果）
+  for (const manifest of manifests || []) {
+    if (!manifest.fields.some((field) => (field.edited ?? field.translated) != null)) continue;
+    for (const field of manifest.fields) {
+      const value = field.edited ?? field.translated;
+      if (value != null) field.obj[field.key] = value;
+    }
+    zip.file(manifest.path, JSON.stringify(manifest.data, null, 2));
+  }
 }
 
 async function exportArchive() {
   const as = archiveState();
-  if (!as.groups.length) return;
+  if (!as.groups.length && !as.manifests?.length) return;
   if (as.packs) {
     // 批量：每个资源包独立处理后保留原后缀，统一打进外层 zip
     const outer = new JSZip();
@@ -498,7 +584,7 @@ async function exportArchive() {
     return;
   }
   const zip = await JSZip.loadAsync(as.file);
-  await applyPackChanges(zip, as.groups);
+  await applyPackChanges(zip, as.groups, as.manifests);
   downloadBlob(await zip.generateAsync({ type: 'blob' }), archiveExportName());
 }
 

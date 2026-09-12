@@ -114,6 +114,13 @@ const checks = `
   ok(doLoadArchiveBatch.toString().includes('archiveExtOf(file.name)'), '批量整包模式后缀识别应复用 archiveExtOf');
   ok(exportArchive.toString().includes('packBaseName(pack.file.name)') && downloadEachPack.toString().includes('packBaseName(pack.file.name)'), '批量导出（打包/逐包）文件名应使用 packBaseName 去除双后缀与副本标记');
   ok(exportArchive.toString().includes('used.has(name)'), '打包下载全部应对重名包自动加 _1/_2 后缀（JSZip 同名 entry 会互相覆盖）');
+  // manifest 翻译：整包模式，目标语言单选，源语言 translate.language.recognition 自动识别
+  ok(typeof parseManifests === 'function' && doLoadArchive.toString().includes('parseManifests(file)'), '整包模式应解析包内 manifest.json（parseManifests）');
+  ok(translateManifest.toString().includes('recognition') && translateManifest.toString().includes("|| 'en_US'"), 'manifest 源语言应自动识别（translate.language.recognition，识别不出回落英语）');
+  ok(!translateManifest.toString().match(/data-source-group|data-target-group/), 'manifest 翻译不依赖分组语言选择');
+  ok(applyPackChanges.toString().includes('JSON.stringify(manifest.data'), '导出应把 manifest 译文写回清单');
+  ok(exportArchive.toString().includes('applyPackChanges(zip, as.groups, as.manifests)'), '整包导出应传入 manifests 写回翻译结果');
+  ok(renderArchive.toString().includes('#manifest-target-lang') && !renderArchive.toString().match(/multiple[^>]*id="manifest-target-lang/), 'manifest 翻译目标语言应为单选');
   ok(fileLabel('zh_CN.lang', 'zh_CN') === 'zh_CN.lang（简体中文（中国大陆））', 'fileLabel 应输出“文件名（语言中文名）”');
   ok(fileLabel('custom.lang', null) === 'custom.lang', 'fileLabel 无语言时应退回纯文件名');
   ok(groupCard.toString().includes('fileLabel(item.fileName, item.language)') && generatedList.toString().includes('fileLabel('), '两个列表的文件名都应附带语言中文名');
