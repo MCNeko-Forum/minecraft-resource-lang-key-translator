@@ -10,6 +10,7 @@ globalThis.history = { replaceState() {} };
 const ok = (condition, message) => { if (!condition) throw new Error('自检失败：' + message); };
 globalThis.ok = ok;
 globalThis.__css = readFileSync(new URL('./static/css/styles.css', import.meta.url), 'utf8');
+globalThis.__src = readFileSync(new URL('./static/js/app.js', import.meta.url), 'utf8');
 
 const src = readFileSync(new URL('./static/js/app.js', import.meta.url), 'utf8');
 // index.html 防外部覆盖：关键新增元素必须存在，否则运行时 $() 会拿到 null
@@ -41,6 +42,9 @@ ok(/id="overwrite-dialog"/.test(html) && /id="overwrite-confirm"/.test(html) && 
   ok(src.includes('pickDefaultSourceFile(group.files)') && src.includes('BEDROCK_LANGUAGES[normalizeLanguage(item.language)]'), '默认源文件应优先选第一个能识别官方语言的文件（pickDefaultSourceFile）');
   // 翻译服务：上游 api.translate.zvo.cn 开源服务负载过高经常故障，切 client.edge（微软 Edge 翻译接口，浏览器直连免服务器）
   ok(src.includes("translate?.service?.use?.('client.edge')"), '应切换翻译服务为 client.edge（上游开源服务负载过高经常故障）');
+  // 设置弹窗：顶栏设置入口 + 术语表（localStorage 持久化），小屏全屏/大屏窗口
+  ok(html.includes('id="settings-toggle"') && html.includes('id="settings-dialog"') && html.includes('id="glossary-add"') && html.includes('id="glossary-list"'), '顶栏应有设置入口，设置弹窗含术语表列表与添加按钮');
+  ok(src.includes('mc-lang-glossary') && src.includes('const renderGlossary'), '术语表应可增删改并持久化到 localStorage（mc-lang-glossary）');
 
 ok(html.includes('./static/js/app.js') && html.includes('./static/css/styles.css') && html.includes('./static/css/fonts.css') && !/src="\.\/app\.js"/.test(html) && !/href="\.\/styles\.css"/.test(html), 'index.html 静态资源应引用 static 目录（app.js/styles.css/fonts.css）');
   ok(css.includes("'Alibaba PuHuiTi', Inter"), 'styles.css 全局字体栈应以 Alibaba PuHuiTi 开头（否则字体文件不会被请求）');
@@ -65,6 +69,7 @@ ok(/batch-translate-list'\)\.querySelectorAll\('mdui-checkbox'\)/.test(src) && /
 const checks = `
 ;(async function () {
   const css = globalThis.__css;
+  const src = globalThis.__src;
   const bedrock = Object.keys(BEDROCK_LANGUAGES);
   const translate = Object.keys(TRANSLATE_LANGUAGES);
   ok(bedrock.length === 29, 'BEDROCK_LANGUAGES 应有 29 种语言，实际 ' + bedrock.length);
@@ -100,7 +105,10 @@ const checks = `
   ok(!groupCard.toString().includes('>可修改<') && !renderSingle.toString().includes('>可修改<') && !renderSingleBatch.toString().includes('>可修改<'), '源文件预览框不应显示“可修改”标签');
   ok(!groupCard.toString().includes("item.language || '未识别语言'"), '语言文件列表不应显示语言代码卡片');
   ok(groupCard.toString().includes('个文件，点击展开') && groupCard.toString().indexOf('review-box') < groupCard.toString().indexOf('class="file-list"'), '整包模式语言文件列表应默认折叠');
-  ok(renderArchive.toString().includes("group.selection?.source || pickDefaultSourceFile(group.files)?.path"), '整包模式源语言应默认选择第一个能识别官方语言的文件');
+  // 简化界面：所有模式删除“源语言”下拉，自动取第一个识别出官方语言的文件（单文件模式取文件名推断，识别不出回落 en_US）
+  ok(!src.includes('data-source-group') && !src.includes('id="single-source"') && !src.includes('data-batch-source"') && !src.includes('sourceLanguageMenuItems'), '所有模式都不应有源语言下拉（data-source-group/single-source/data-batch-source/sourceLanguageMenuItems）');
+  ok(translateGroup.toString().includes('pickDefaultSourceFile(group.files)'), '整包模式源文件应自动取 pickDefaultSourceFile（第一个识别出官方语言的）');
+  ok(translateSingle.toString().includes("state.single.sourceLanguage || 'en_US'") && translateBatchSingle.toString().includes("item.sourceLanguage || 'en_US'"), '单文件两模式源语言应自动推断，识别不出回落 en_US');
   // .mcpack.zip / .mcaddon.zip 双后缀：导出格式应识别为 mcpack/mcaddon（去除结尾 .zip），单包与批量共用 archiveExtOf
   // 双后缀 + 副本标记：括号内容不限数字（1 / copy / 副本２），半角/全角/无空格都要识别
   ok(archiveExtOf('foo.mcpack.zip') === 'mcpack' && archiveExtOf('foo.mcpack (1).zip') === 'mcpack' && archiveExtOf('foo.mcpack(1).zip') === 'mcpack' && archiveExtOf('foo.mcaddon（２）.zip') === 'mcaddon' && archiveExtOf('FOO.MCPACK　（3）.ZIP') === 'mcpack', 'archiveExtOf 应识别半角/全角/无空格的副本标记双后缀');
@@ -137,9 +145,6 @@ const checks = `
   ok(normalizeLanguage('en_UK') === 'en_GB' && normalizeLanguage('zh_CN') === 'zh_CN', 'normalizeLanguage 应归一化 en_UK 且不影响标准代码');
   ok(fileLabel('en_UK.lang', 'en_UK') === 'en_UK.lang（英语（英国））', 'en_UK 文件应显示映射后的中文名');
   ok(translateValues.toString().includes('TRANSLATE_LANGUAGES[normalizeLanguage(from)]'), '翻译源语言应经别名归一化（en_UK 可正确翻译）');
-  ok(typeof sourceLanguageMenuItems === 'function' && sourceLanguageMenuItems('en_UK').includes('value="en_UK"'), '源语言下拉应能显示非标准代码 en_UK');
-  ok(!sourceLanguageMenuItems('zh_CN').includes('en_UK'), '标准语言时源语言下拉不应追加 en_UK');
-  ok(renderSingle.toString().includes('sourceLanguageMenuItems(state.single.sourceLanguage)') && renderSingleBatch.toString().includes('sourceLanguageMenuItems(item.selection?.source'), '两种单文件模式源语言下拉应用 sourceLanguageMenuItems');
   ok(translateGroup.toString().includes('button.disabled = true') && translateGroup.toString().includes('翻译中'), 'translateGroup 必须禁用按钮并显示翻译进度');
   ok(translateGroup.toString().includes('spinning') && translateSingle.toString().includes('spinning'), '翻译中必须显示旋转图标');
   ok(targetOptions.toString().includes('group.generated'), '目标语言选项应把已生成的翻译结果视为已存在并禁用');
@@ -241,7 +246,7 @@ const checks = `
   ok(typeof translateAllSingleFiles === 'function', '批量单文件一键翻译函数应存在');
   ok(renderSingleBatch.toString().includes('translate-all-single') && renderSingleBatch.toString().includes('batch-target-lang'), '批量单文件顶部应渲染一键翻译卡');
   ok(translateAllSingleFiles.toString().includes("result.target === target") && translateAllSingleFiles.toString().includes('skipped'), '已有目标结果的文件应自动跳过');
-  ok(translateAllSingleFiles.toString().includes('data-batch-source') && translateAllSingleFiles.toString().includes('|| item.sourceLanguage'), '源语言应取下拉已选值并回退文件名推断');
+  ok(translateAllSingleFiles.toString().includes("item.sourceLanguage || 'en_US'"), '一键翻译源语言应自动取文件名推断（回落 en_US）');
   ok(translateAllSingleFiles.toString().includes('spinning') && translateAllSingleFiles.toString().includes('disabled = true'), '一键翻译应禁用按钮并显示进度');
   ok(renderSingleBatch.toString().includes('state.singleBatch.translateTarget = event.target.value'), '一键翻译目标语言选择应写入 state');
   ok(batchResultsCard.toString().includes('data-batch-review-lang') && batchResultsCard.toString().includes('data-batch-delete-single') && batchResultsCard.toString().includes('data-batch-download-single'), '批量单文件结果列表应有校对、删除、下载');
@@ -266,6 +271,9 @@ const checks = `
   ok(runBatchTranslate.toString().includes('item.language !== target'), '覆盖后原有同目标语言文件应从上方列表移除，只在已翻译文件中出现');
   ok(runBatchTranslate.toString().includes('spinning') && runBatchTranslate.toString().includes('disabled = true'), '一键翻译应禁用按钮并显示进度');
   ok($('batch-translate-confirm') !== undefined, '一键翻译确认按钮绑定应存在');
+  // 设置弹窗 + 翻译术语表：顶栏入口，localStorage 持久化，翻译时占位符强制替换译法
+  ok(translateValues.toString().includes('state.glossary') && translateValues.toString().includes('%g'), '翻译时应按术语表强制替换译法（%gN% 占位符机制）');
+  ok(css.includes('#settings-dialog::part(panel)') && css.includes('100dvh'), '设置弹窗小屏应网页内全屏（::part(panel) 覆盖）');
   console.log('自检通过：29 种语言、映射一致、定义齐全、注释保留、清单同步正常');
 })().catch((error) => { console.error(error.message); process.exit(1); });`;
 

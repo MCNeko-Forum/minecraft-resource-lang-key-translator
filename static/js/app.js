@@ -10,6 +10,14 @@ const state = {
 
 const $ = (id) => document.getElementById(id);
 const snackbar = (message) => { $('snackbar').textContent = message; $('snackbar').open = true; };
+// 翻译术语表（设置弹窗维护，localStorage 持久化）：翻译时原文术语强制替换为指定译文；读不到（隐身模式/Node 自检）就当空表
+const loadGlossary = () => {
+  try {
+    const list = JSON.parse(localStorage.getItem('mc-lang-glossary') || '[]');
+    return Array.isArray(list) ? list.filter((item) => item && typeof item.source === 'string' && typeof item.target === 'string') : [];
+  } catch { return []; }
+};
+state.glossary = loadGlossary();
 // 翻译服务切换为 client.edge（微软 Edge 翻译接口，浏览器直连免服务器）：上游 api.translate.zvo.cn 免费开源服务负载过高经常故障，这是官方文档推荐的无服务方案
 window.translate?.service?.use?.('client.edge');
 // 去掉误输的下载后缀，导出时统一由后缀选择器决定
@@ -41,6 +49,23 @@ $('mode-tabs').addEventListener('change', (event) => {
 })();
 
 $('theme-toggle').addEventListener('click', () => document.documentElement.classList.toggle('mdui-theme-dark'));
+// 设置弹窗：术语表增删改即存 localStorage；小屏全屏/大屏窗口由 styles.css 控制
+const saveGlossary = () => { try { localStorage.setItem('mc-lang-glossary', JSON.stringify(state.glossary)); } catch {} };
+const renderGlossary = () => {
+  $('glossary-list').innerHTML = state.glossary.length ? state.glossary.map((term, index) => `
+    <div class="glossary-row">
+      <mdui-text-field variant="outlined" label="原文术语" value="${escapeHtml(term.source)}" data-glossary-source="${index}"></mdui-text-field>
+      <span class="muted glossary-arrow" aria-hidden="true">→</span>
+      <mdui-text-field variant="outlined" label="译文术语" value="${escapeHtml(term.target)}" data-glossary-target="${index}"></mdui-text-field>
+      <mdui-button-icon aria-label="删除术语 ${index + 1}" data-glossary-delete="${index}"><span class="material-icons" aria-hidden="true">delete</span></mdui-button-icon>
+    </div>`).join('') : '<p class="muted">暂无术语，点击下方按钮添加</p>';
+  $('glossary-list').querySelectorAll('[data-glossary-source]').forEach((field) => field.addEventListener('input', (event) => { state.glossary[Number(event.target.dataset.glossarySource)].source = event.target.value; saveGlossary(); }));
+  $('glossary-list').querySelectorAll('[data-glossary-target]').forEach((field) => field.addEventListener('input', (event) => { state.glossary[Number(event.target.dataset.glossaryTarget)].target = event.target.value; saveGlossary(); }));
+  $('glossary-list').querySelectorAll('[data-glossary-delete]').forEach((button) => button.addEventListener('click', () => { state.glossary.splice(Number(button.dataset.glossaryDelete), 1); saveGlossary(); renderGlossary(); }));
+};
+$('settings-toggle').addEventListener('click', () => { renderGlossary(); $('settings-dialog').open = true; });
+$('settings-close').addEventListener('click', () => { $('settings-dialog').open = false; });
+$('glossary-add').addEventListener('click', () => { state.glossary.push({ source: '', target: '' }); saveGlossary(); renderGlossary(); });
 $('archive-pick').addEventListener('click', () => $('archive-input').click());
 $('single-pick').addEventListener('click', () => $('single-input').click());
 $('archive-batch-pick').addEventListener('click', () => $('archive-batch-input').click());
@@ -231,9 +256,9 @@ function groupCard(group, groupIndex) {
           <div class="file-actions">${item.deleted ? '<mdui-chip>待删除</mdui-chip>' : `<mdui-button-icon aria-label="删除 ${escapeHtml(item.fileName)}" data-delete="${groupIndex}:${fileIndex}"><span class="material-icons" aria-hidden="true">delete</span></mdui-button-icon>`}</div>
           ${item.deleted ? '' : `<details class="review-box"><summary><span class="material-icons expand-icon" aria-hidden="true">expand_more</span><strong>源文件</strong><span class="muted">点击展开预览或修改</span></summary><div class="review-editor"><mdui-text-field variant="outlined" label="源文件内容（可修改）" rows="12" value="${escapeHtml(item.edited ?? item.text)}" data-archive-source-edit="${groupIndex}:${fileIndex}"></mdui-text-field></div></details>`}
         </div>`).join('')}</div></details>
-      <div class="config-grid"><mdui-select label="源语言文件" data-source-group="${groupIndex}">${group.files.filter((item) => !item.deleted && item.extension !== 'json').map((item) => `<mdui-menu-item value="${escapeHtml(item.path)}">${escapeHtml(item.fileName)}${item.language ? ` · ${BEDROCK_LANGUAGES[normalizeLanguage(item.language)] ?? item.language}` : ''}</mdui-menu-item>`).join('')}</mdui-select><mdui-select label="目标语言（可多选）" multiple data-target-group="${groupIndex}">${targetOptions(group)}</mdui-select></div>
+      <div class="config-grid"><mdui-select label="目标语言（可多选）" multiple data-target-group="${groupIndex}">${targetOptions(group)}</mdui-select></div>
       <div class="advanced-options"><mdui-checkbox data-strip-codes ${state.options.stripCodes ? 'checked' : ''}>高级选项：翻译时删除格式代码（§ 及其后跟随的数字/字母）</mdui-checkbox></div>
-      <div class="toolbar"><span class="muted">可同时生成多个不存在的目标语言文件</span><mdui-button variant="tonal" data-translate-group="${groupIndex}"><span class="material-icons" aria-hidden="true">translate</span>开始翻译</mdui-button></div>
+      <div class="toolbar"><span class="muted">源文件自动取第一个识别出官方语言的文件，可同时生成多个目标语言</span><mdui-button variant="tonal" data-translate-group="${groupIndex}"><span class="material-icons" aria-hidden="true">translate</span>开始翻译</mdui-button></div>
       ${generatedList(group, groupIndex)}
     </mdui-card>`;
 }
@@ -304,15 +329,11 @@ function renderArchive() {
     const target = manifest?.fields.find((item) => item.obj === manifest.data.header && item.key === key);
     if (target) target.edited = event.target.value;
   }));
-  // 恢复或默认选择各分组的源文件（默认第一个能识别出语言的），并恢复目标语言选择
+  // 恢复各分组已选的目标语言（源文件已固定自动取第一个识别出官方语言的文件）
   as.groups.forEach((group, groupIndex) => {
-    const source = root.querySelector(`[data-source-group="${groupIndex}"]`);
     const target = root.querySelector(`[data-target-group="${groupIndex}"]`);
-    if (source) source.value = group.selection?.source || pickDefaultSourceFile(group.files)?.path || '';
     if (target && group.selection) target.value = group.selection.targets;
-    // 选择变化实时存入 group.selection：其他分组翻译触发重渲染时，本分组已选的源/目标不丢失
-    source?.addEventListener('change', () => { group.selection = { source: source.value, targets: getSelected(target) }; });
-    target?.addEventListener('change', () => { group.selection = { ...(group.selection || { source: source?.value }), targets: getSelected(target) }; });
+    target?.addEventListener('change', () => { group.selection = { targets: getSelected(target) }; });
   });
 }
 
@@ -413,17 +434,16 @@ async function translateGroup(groupIndex) {
   const as = archiveState();
   const root = archiveRoot();
   const group = as.groups[groupIndex];
-  const sourceSelect = root.querySelector(`[data-source-group="${groupIndex}"]`);
-  const targetSelect = root.querySelector(`[data-target-group="${groupIndex}"]`);
-  const sourcePath = sourceSelect?.value;
-  const targets = getSelected(targetSelect);
-  if (!sourcePath || !targets.length) { snackbar('请先选择源语言文件和至少一个目标语言'); return; }
-  const source = group.files.find((item) => item.path === sourcePath);
+  const targets = getSelected(root.querySelector(`[data-target-group="${groupIndex}"]`));
+  if (!targets.length) { snackbar('请选择至少一个目标语言'); return; }
+  // 源文件固定取第一个识别出官方语言的（en_US.lang 等），识别不出取第一个
+  const source = pickDefaultSourceFile(group.files);
+  if (!source) { snackbar('没有可翻译的语言文件'); return; }
   // 源文件被手动修改过则用修改后内容，否则用上传时预读的原文
   const parsed = parseText(source.edited ?? source.text);
   const values = parsed.entries.map((entry) => entry.value);
   // 翻译完成后清空目标语言选择，避免与“已存在”禁用项冲突
-  group.selection = { source: sourcePath, targets: [] };
+  group.selection = { targets: [] };
   group.generated = (group.generated || []).filter((gen) => !targets.includes(gen.target));
   const button = root.querySelector(`[data-translate-group="${groupIndex}"]`);
   const setProgress = (percent) => { if (button) button.innerHTML = `<span class="material-icons spinning" aria-hidden="true">autorenew</span>翻译中 ${percent}%`; };
@@ -471,8 +491,7 @@ const languageMenuItems = () => Object.entries(BEDROCK_LANGUAGES).map(([code, na
 // 非标准语言代码别名（部分资源包误用 en_UK）：查语言表前归一化，目标语言列表只含 29 种标准语言
 const LANGUAGE_ALIASES = { en_UK: 'en_GB' };
 const normalizeLanguage = (code) => LANGUAGE_ALIASES[code] || code;
-// 源语言下拉：29 种标准语言 + 当前文件的非标准代码（如 en_UK）追加为可选项；目标语言下拉始终只用标准 29 种
-const sourceLanguageMenuItems = (current) => current && !BEDROCK_LANGUAGES[current] ? `${languageMenuItems()}<mdui-menu-item value="${escapeHtml(current)}">${escapeHtml(current)} · ${BEDROCK_LANGUAGES[normalizeLanguage(current)] ?? '未知语言'}</mdui-menu-item>` : languageMenuItems();
+// 目标语言下拉：始终只用标准 29 种官方语言
 
 // 文件名（语言中文名）：识别不到官方语言时退回纯文件名
 const fileLabel = (fileName, language) => { const name = BEDROCK_LANGUAGES[normalizeLanguage(language)]; return fileName + (language && name ? `（${name}）` : ''); };
@@ -513,8 +532,14 @@ async function translateValues(texts, from, to) {
   // Minecraft 格式代码（§4、§f、§r 等）先替换为占位符再整句翻译，避免拆碎单词（Japan§4ese 这类词中代码）；译文占位符不完整时该条回退原文
   const prepared = input.map((text) => {
     const codes = [];
-    const masked = String(text).replace(/§[0-9a-fk-or]/gi, (code) => { codes.push(code); return `%c${codes.length}%`; });
-    return { codes, masked };
+    let masked = String(text).replace(/§[0-9a-fk-or]/gi, (code) => { codes.push(code); return `%c${codes.length}%`; });
+    // 术语表：原文术语替换为 %gN% 占位符（大小写不敏感），译文回填指定译文，强制术语译法
+    const terms = [];
+    for (const term of state.glossary) {
+      if (!term.source || !term.target) continue;
+      masked = masked.replace(new RegExp(term.source.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'gi'), () => { terms.push(term.target); return `%g${terms.length}%`; });
+    }
+    return { codes, terms, masked };
   });
   await waitForRateLimit();
   // ponytail: 上游库对重复文本存在索引回填问题，先按值去重再翻译，减小请求体积
@@ -523,15 +548,19 @@ async function translateValues(texts, from, to) {
     if (data?.result !== 1 || !Array.isArray(data.text)) { snackbar(`翻译接口返回失败：${data?.info || '未知错误'}，未翻译部分将保留原文`); resolve(texts); return; }
     const mapping = new Map(unique.map((text, index) => [text, data.text[index]]));
     resolve(prepared.map((item, index) => {
-      const translated = mapping.get(item.masked) ?? texts[index];
-      if (!item.codes.length) return translated;
-      let found = 0;
-      const restored = translated.replace(/%c(\d+)%/g, (token, n) => {
-        const code = item.codes[Number(n) - 1];
-        if (code) { found += 1; return code; }
-        return token;
-      });
-      return found === item.codes.length ? restored : texts[index];
+      let output = mapping.get(item.masked) ?? texts[index];
+      if (item.codes.length) {
+        let found = 0;
+        output = output.replace(/%c(\d+)%/g, (token, n) => {
+          const code = item.codes[Number(n) - 1];
+          if (code) { found += 1; return code; }
+          return token;
+        });
+        if (found !== item.codes.length) return texts[index];
+      }
+      // 术语占位符回填：占位符被译文吞掉时该术语保持机翻结果
+      if (item.terms.length) output = output.replace(/%g(\d+)%/g, (token, n) => item.terms[Number(n) - 1] ?? token);
+      return output;
     }));
   // 请求异常（网络断开/服务不可用）：不传时 Promise 永不 resolve，按钮会卡在“翻译中”，这里回落原文
   }, () => { snackbar('翻译服务暂时不可用，本次保留原文，请稍后重试'); resolve(texts); }));
@@ -755,8 +784,7 @@ async function doLoadSingleFile(file) {
 function renderSingle() {
   const issues = state.single.issues || [];
   const targetValue = (state.single.targetLanguages || []).length ? ` value="${escapeHtml(JSON.stringify(state.single.targetLanguages))}"` : '';
-  $('single-workspace').innerHTML = `<mdui-card class="single-card"><div class="group-header"><div><h2>${escapeHtml(state.single.file.name)}</h2><p data-single-count>${state.single.entries.length} 个键 · 源语言：${escapeHtml(state.single.sourceLanguage || '需要选择')}</p></div><mdui-chip>${issues.length ? `${issues.length} 个问题` : '解析正常'}</mdui-chip></div><details class="review-box"><summary><span class="material-icons expand-icon" aria-hidden="true">expand_more</span><strong>源文件</strong><span class="muted">点击展开预览或修改</span></summary><div class="review-editor"><mdui-text-field variant="outlined" label="源文件内容（可修改）" rows="12" value="${escapeHtml(state.single.edited ?? renderLines(state.single, state.single.entries.map((entry) => entry.value)))}" data-single-source-edit></mdui-text-field></div></details><div class="config-grid"><mdui-select label="源语言" value="${escapeHtml(state.single.sourceLanguage)}" id="single-source">${sourceLanguageMenuItems(state.single.sourceLanguage)}</mdui-select><mdui-select label="目标语言（可多选）" multiple${targetValue} id="single-target">${singleTargetOptions()}</mdui-select></div><div class="stats"><mdui-chip>键：${state.single.entries.length}</mdui-chip><mdui-chip>问题：${issues.length}</mdui-chip></div><div class="advanced-options"><mdui-checkbox data-strip-codes ${state.options.stripCodes ? 'checked' : ''}>高级选项：翻译时删除格式代码（§ 及其后跟随的数字/字母）</mdui-checkbox></div><div class="toolbar"><span class="muted">保持键名不变，仅翻译等号右侧的值；翻译结果会累积保留</span><mdui-button variant="filled" id="single-translate"><span class="material-icons" aria-hidden="true">translate</span>开始翻译</mdui-button></div></mdui-card>${singleResultCard()}`;
-  $('single-source').addEventListener('change', (event) => { state.single.sourceLanguage = event.target.value; });
+  $('single-workspace').innerHTML = `<mdui-card class="single-card"><div class="group-header"><div><h2>${escapeHtml(state.single.file.name)}</h2><p data-single-count>${state.single.entries.length} 个键 · 源语言：${escapeHtml(state.single.sourceLanguage || 'en_US')}</p></div><mdui-chip>${issues.length ? `${issues.length} 个问题` : '解析正常'}</mdui-chip></div><details class="review-box"><summary><span class="material-icons expand-icon" aria-hidden="true">expand_more</span><strong>源文件</strong><span class="muted">点击展开预览或修改</span></summary><div class="review-editor"><mdui-text-field variant="outlined" label="源文件内容（可修改）" rows="12" value="${escapeHtml(state.single.edited ?? renderLines(state.single, state.single.entries.map((entry) => entry.value)))}" data-single-source-edit></mdui-text-field></div></details><div class="config-grid"><mdui-select label="目标语言（可多选）" multiple${targetValue} id="single-target">${singleTargetOptions()}</mdui-select></div><div class="stats"><mdui-chip>键：${state.single.entries.length}</mdui-chip><mdui-chip>问题：${issues.length}</mdui-chip></div><div class="advanced-options"><mdui-checkbox data-strip-codes ${state.options.stripCodes ? 'checked' : ''}>高级选项：翻译时删除格式代码（§ 及其后跟随的数字/字母）</mdui-checkbox></div><div class="toolbar"><span class="muted">保持键名不变，仅翻译等号右侧的值；翻译结果会累积保留</span><mdui-button variant="filled" id="single-translate"><span class="material-icons" aria-hidden="true">translate</span>开始翻译</mdui-button></div></mdui-card>${singleResultCard()}`;
   $('single-target').addEventListener('change', (event) => { state.single.targetLanguages = Array.isArray(event.target.value) ? event.target.value : [event.target.value]; });
   $('single-translate').addEventListener('click', translateSingle);
   $('single-workspace').querySelectorAll('[data-download-single]').forEach((button) => button.addEventListener('click', (event) => { event.stopPropagation(); downloadSingle(Number(button.dataset.downloadSingle)); }));
@@ -782,9 +810,10 @@ function singleResultCard() {
 }
 
 async function translateSingle() {
-  const source = $('single-source').value || state.single.sourceLanguage;
+  // 源语言自动取文件名推断值，识别不出回落 en_US（绝大多数资源包为英语）
+  const source = state.single.sourceLanguage || 'en_US';
   const targets = Array.isArray($('single-target')?.value) ? $('single-target').value : ($('single-target')?.value ? [$('single-target').value] : []);
-  if (!source || !targets.length) { snackbar('请选择源语言和至少一个目标语言'); return; }
+  if (!targets.length) { snackbar('请选择至少一个目标语言'); return; }
   if (targets.includes(source)) { snackbar('目标语言不能与源语言相同'); return; }
   const existing = (state.single.results || []).map((result) => result.target);
   if (targets.some((target) => existing.includes(target))) { snackbar('所选目标语言中已有翻译结果，请先删除后再重新翻译'); return; }
@@ -870,9 +899,9 @@ function renderSingleBatch() {
   const translateAllCard = `<mdui-card class="export-card"><div class="config-grid"><mdui-select label="一键翻译至" value="${state.singleBatch.translateTarget || 'zh_CN'}" id="batch-target-lang">${languageMenuItems()}</mdui-select></div><div class="toolbar"><span class="muted">翻译所有文件，已有该目标语言结果的文件自动跳过</span><mdui-button variant="filled" id="translate-all-single"><span class="material-icons" aria-hidden="true">translate</span>一键翻译</mdui-button></div></mdui-card>`;
   root.innerHTML = `${translateAllCard}${files.map((item, index) => `
     <mdui-card class="single-card">
-      <div class="group-header"><div><input class="folder-name-input" data-batch-rename="${index}" value="${escapeHtml(item.folderName || stripExt(item.file.name))}" aria-label="打包时的文件夹名" title="打包下载时的文件夹名，可直接修改"><p data-batch-count="${index}">${item.entries.length} 个键 · 源语言：${escapeHtml(item.sourceLanguage || '需要选择')}</p></div><mdui-chip>${item.issues.length ? `${item.issues.length} 个问题` : '解析正常'}</mdui-chip></div>
+      <div class="group-header"><div><input class="folder-name-input" data-batch-rename="${index}" value="${escapeHtml(item.folderName || stripExt(item.file.name))}" aria-label="打包时的文件夹名" title="打包下载时的文件夹名，可直接修改"><p data-batch-count="${index}">${item.entries.length} 个键 · 源语言：${escapeHtml(item.sourceLanguage || 'en_US')}</p></div><mdui-chip>${item.issues.length ? `${item.issues.length} 个问题` : '解析正常'}</mdui-chip></div>
       <details class="review-box"><summary><span class="material-icons expand-icon" aria-hidden="true">expand_more</span><strong>源文件</strong><span class="muted">点击展开预览或修改</span></summary><div class="review-editor"><mdui-text-field variant="outlined" label="源文件内容（可修改）" rows="12" value="${escapeHtml(item.edited ?? renderLines(item, item.entries.map((entry) => entry.value)))}" data-batch-source-edit="${index}"></mdui-text-field></div></details>
-      <div class="config-grid"><mdui-select label="源语言" value="${escapeHtml(item.selection?.source || item.sourceLanguage)}" data-batch-source="${index}">${sourceLanguageMenuItems(item.selection?.source || item.sourceLanguage)}</mdui-select><mdui-select label="目标语言（可多选）" multiple data-batch-target="${index}">${singleTargetOptionsFor(item.results)}</mdui-select></div>
+      <div class="config-grid"><mdui-select label="目标语言（可多选）" multiple data-batch-target="${index}">${singleTargetOptionsFor(item.results)}</mdui-select></div>
       <div class="advanced-options"><mdui-checkbox data-strip-codes ${state.options.stripCodes ? 'checked' : ''}>高级选项：翻译时删除格式代码（§ 及其后跟随的数字/字母）</mdui-checkbox></div>
       <div class="toolbar"><span class="muted">保持键名不变，仅翻译等号右侧的值；翻译结果会累积保留</span><mdui-button variant="filled" data-translate-single-batch="${index}"><span class="material-icons" aria-hidden="true">translate</span>开始翻译</mdui-button></div>
       ${batchResultsCard(item, index)}
@@ -887,24 +916,20 @@ function renderSingleBatch() {
   root.querySelector('#translate-all-single')?.addEventListener('click', translateAllSingleFiles);
   // 文件夹名实时编辑写入 item.folderName，打包下载时优先使用
   root.querySelectorAll('[data-batch-rename]').forEach((input) => input.addEventListener('input', (event) => { files[Number(event.target.dataset.batchRename)].folderName = event.target.value; }));
-  // 选择变化实时存入 item.selection：其他文件翻译触发重渲染时，本文件已选的源/目标不丢失
+  // 目标语言选择实时存入 item.selection：其他文件翻译触发重渲染时，本文件已选目标不丢失（源语言固定取文件名推断值）
   files.forEach((item, index) => {
-    const source = root.querySelector(`[data-batch-source="${index}"]`);
     const target = root.querySelector(`[data-batch-target="${index}"]`);
     if (target && item.selection?.targets) target.value = item.selection.targets;
-    source?.addEventListener('change', () => { item.selection = { ...(item.selection || {}), source: source.value }; item.sourceLanguage = source.value; });
-    target?.addEventListener('change', () => { item.selection = { ...(item.selection || {}), targets: getSelected(target) }; });
+    target?.addEventListener('change', () => { item.selection = { targets: getSelected(target) }; });
   });
 }
 
-// 一键翻译所有单文件：跳过无源语言和已有该目标结果的文件，其余按各自源语言翻译
+// 一键翻译所有单文件：源语言固定取文件名推断值（识别不出回落 en_US），已有该目标结果的文件跳过
 async function translateAllSingleFiles() {
   const root = $('single-batch-workspace');
   const target = root.querySelector('#batch-target-lang')?.value;
   if (!target) { snackbar('请选择目标语言'); return; }
   const files = state.singleBatch.files;
-  const sources = files.map((item) => root.querySelector(`[data-batch-source="${files.indexOf(item)}"]`)?.value || item.sourceLanguage);
-  if (!sources.some(Boolean)) { snackbar('没有可翻译的文件：请先选择源语言'); return; }
   const button = root.querySelector('#translate-all-single');
   if (button) button.disabled = true;
   let done = 0;
@@ -914,8 +939,8 @@ async function translateAllSingleFiles() {
   setProgress();
   for (let index = 0; index < files.length; index += 1) {
     const item = files[index];
-    const source = sources[index];
-    if (!source || source === target || (item.results || []).some((result) => result.target === target)) { skipped += 1; done += 1; setProgress(); continue; }
+    const source = item.sourceLanguage || 'en_US';
+    if (source === target || (item.results || []).some((result) => result.target === target)) { skipped += 1; done += 1; setProgress(); continue; }
     const values = item.entries.map((entry) => entry.value);
     const translatedValues = await translateValues(values, source, target);
     item.results.push({ parsed: { entries: item.entries, lines: item.lines }, translated: translatedValues, target });
@@ -930,9 +955,10 @@ async function translateAllSingleFiles() {
 async function translateBatchSingle(fileIndex) {
   const item = state.singleBatch.files[fileIndex];
   const root = $('single-batch-workspace');
-  const source = root.querySelector(`[data-batch-source="${fileIndex}"]`)?.value || item.sourceLanguage;
+  // 源语言固定取文件名推断值，识别不出回落 en_US
+  const source = item.sourceLanguage || 'en_US';
   const targets = getSelected(root.querySelector(`[data-batch-target="${fileIndex}"]`));
-  if (!source || !targets.length) { snackbar('请选择源语言和至少一个目标语言'); return; }
+  if (!targets.length) { snackbar('请选择至少一个目标语言'); return; }
   if (targets.includes(source)) { snackbar('目标语言不能与源语言相同'); return; }
   const existing = (item.results || []).map((result) => result.target);
   if (targets.some((target) => existing.includes(target))) { snackbar('所选目标语言中已有翻译结果，请先删除后再重新翻译'); return; }
@@ -1023,7 +1049,7 @@ const handleSingleReview = (event) => {
     if (item) {
       applySourceEdit(item, batchSource.value);
       const count = $('single-batch-workspace').querySelector(`[data-batch-count="${batchSource.dataset.batchSourceEdit}"]`);
-      if (count) count.textContent = `${item.entries.length} 个键 · 源语言：${item.sourceLanguage || '需要选择'}`;
+      if (count) count.textContent = `${item.entries.length} 个键 · 源语言：${item.sourceLanguage || 'en_US'}`;
     }
     return;
   }
@@ -1031,7 +1057,7 @@ const handleSingleReview = (event) => {
   if (singleSource) {
     applySourceEdit(state.single, singleSource.value);
     const count = $('single-workspace').querySelector('[data-single-count]');
-    if (count) count.textContent = `${state.single.entries.length} 个键 · 源语言：${state.single.sourceLanguage || '需要选择'}`;
+    if (count) count.textContent = `${state.single.entries.length} 个键 · 源语言：${state.single.sourceLanguage || 'en_US'}`;
     return;
   }
   const batch = event.target.closest?.('[data-batch-review-lang]');

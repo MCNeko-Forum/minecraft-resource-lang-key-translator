@@ -88,3 +88,11 @@ p, .muted { color: var(--muted); }
 .danger { color: var(--danger); }
 /* 移动端 column 布局必须 nowrap：column+wrap 会让 Chrome 把后续子项排到右侧新列（预览框横移出屏幕＝"输入框跑外面"的根因）；stretch 让各子项占满行宽 */
 @media (max-width: 640px) { .page-shell { width: min(100% - 20px, 1180px); margin-top: 14px; } .card-heading { align-items: flex-start; flex-direction: column; } .file-row { align-items: stretch; flex-direction: column; flex-wrap: nowrap; } }
+/* 设置弹窗：小屏网页内全屏，大屏居中窗口 */
+@media (max-width: 640px) { #settings-dialog::part(panel) { width: 100vw; max-width: 100vw; height: 100dvh; max-height: 100dvh; border-radius: 0; margin: 0; } }
+/* 术语表编辑行：原文/译文并排，窄屏收缩不换行（避免 column+wrap 横移问题） */
+.glossary-editor { display: flex; flex-direction: column; gap: 10px; }
+#glossary-list { display: flex; flex-direction: column; gap: 6px; }
+.glossary-row { display: flex; align-items: center; gap: 8px; flex-wrap: nowrap; }
+.glossary-row mdui-text-field { flex: 1; min-width: 0; }
+.glossary-arrow { flex-shrink: 0; }

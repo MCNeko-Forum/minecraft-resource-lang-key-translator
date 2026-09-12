@@ -44,6 +44,7 @@
 <body>
   <mdui-top-app-bar>
     <mdui-top-app-bar-title>基岩版语言键值翻译器</mdui-top-app-bar-title>
+    <mdui-button-icon id="settings-toggle" aria-label="设置"><span class="material-icons" aria-hidden="true">settings</span></mdui-button-icon>
     <mdui-button-icon id="theme-toggle" aria-label="切换深色模式"><span class="material-icons" aria-hidden="true">dark_mode</span></mdui-button-icon>
   </mdui-top-app-bar>
 
@@ -128,6 +129,15 @@
     <div id="batch-translate-list"></div>
     <mdui-button slot="action" variant="text" id="batch-translate-cancel">取消</mdui-button>
     <mdui-button slot="action" variant="filled" id="batch-translate-confirm">开始翻译</mdui-button>
+  </mdui-dialog>
+  <mdui-dialog id="settings-dialog" close-on-overlay-click close-on-esc>
+    <span slot="headline">设置</span>
+    <div class="glossary-editor">
+      <p class="muted">翻译术语表：翻译时原文术语将强制替换为指定译文（大小写不敏感），保存在本浏览器中</p>
+      <div id="glossary-list"></div>
+      <mdui-button variant="tonal" id="glossary-add"><span class="material-icons" aria-hidden="true">add</span>添加术语</mdui-button>
+    </div>
+    <mdui-button slot="action" variant="text" id="settings-close">关闭</mdui-button>
   </mdui-dialog>
   <mdui-snackbar id="snackbar"></mdui-snackbar>
   <script src="./static/js/app.js"></script>
