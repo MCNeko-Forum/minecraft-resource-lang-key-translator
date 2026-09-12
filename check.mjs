@@ -39,6 +39,8 @@ ok(/id="overwrite-dialog"/.test(html) && /id="overwrite-confirm"/.test(html) && 
   ok(longLabels.length === 0, 'text-field/select 的 label 不应超过 12 个字符（超长浮动 label 会撑破移动端布局）：' + longLabels.join(' | '));
   // 默认源文件应优先选第一个能识别出官方语言的（en_US.lang 等），否则上传顺序一变就选到 readme.lang 之类
   ok(src.includes('pickDefaultSourceFile(group.files)') && src.includes('BEDROCK_LANGUAGES[normalizeLanguage(item.language)]'), '默认源文件应优先选第一个能识别官方语言的文件（pickDefaultSourceFile）');
+  // 翻译服务：上游 api.translate.zvo.cn 开源服务负载过高经常故障，切 client.edge（微软 Edge 翻译接口，浏览器直连免服务器）
+  ok(src.includes("translate?.service?.use?.('client.edge')"), '应切换翻译服务为 client.edge（上游开源服务负载过高经常故障）');
 
 ok(html.includes('./static/js/app.js') && html.includes('./static/css/styles.css') && html.includes('./static/css/fonts.css') && !/src="\.\/app\.js"/.test(html) && !/href="\.\/styles\.css"/.test(html), 'index.html 静态资源应引用 static 目录（app.js/styles.css/fonts.css）');
   ok(css.includes("'Alibaba PuHuiTi', Inter"), 'styles.css 全局字体栈应以 Alibaba PuHuiTi 开头（否则字体文件不会被请求）');
@@ -114,6 +116,8 @@ const checks = `
   ok(doLoadArchiveBatch.toString().includes('archiveExtOf(file.name)'), '批量整包模式后缀识别应复用 archiveExtOf');
   ok(exportArchive.toString().includes('packBaseName(pack.file.name)') && downloadEachPack.toString().includes('packBaseName(pack.file.name)'), '批量导出（打包/逐包）文件名应使用 packBaseName 去除双后缀与副本标记');
   ok(exportArchive.toString().includes('used.has(name)'), '打包下载全部应对重名包自动加 _1/_2 后缀（JSZip 同名 entry 会互相覆盖）');
+  // 翻译服务：上游 api.translate.zvo.cn 开源服务经常故障，切 client.edge（微软 Edge 翻译接口）+ 失败回调防卡死
+  ok(translateValues.toString().includes("'翻译服务暂时不可用，本次保留原文，请稍后重试'"), 'translateValues 应传失败回调：请求异常时回落原文，而不是让按钮永远卡在翻译中');
   // manifest 翻译：整包模式，目标语言单选，源语言 translate.language.recognition 自动识别
   ok(typeof parseManifests === 'function' && doLoadArchive.toString().includes('parseManifests(file)'), '整包模式应解析包内 manifest.json（parseManifests）');
   ok(translateManifest.toString().includes('recognition') && translateManifest.toString().includes("|| 'en_US'"), 'manifest 源语言应自动识别（translate.language.recognition，识别不出回落英语）');

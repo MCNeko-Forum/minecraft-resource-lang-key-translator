@@ -10,6 +10,8 @@ const state = {
 
 const $ = (id) => document.getElementById(id);
 const snackbar = (message) => { $('snackbar').textContent = message; $('snackbar').open = true; };
+// 翻译服务切换为 client.edge（微软 Edge 翻译接口，浏览器直连免服务器）：上游 api.translate.zvo.cn 免费开源服务负载过高经常故障，这是官方文档推荐的无服务方案
+window.translate?.service?.use?.('client.edge');
 // 去掉误输的下载后缀，导出时统一由后缀选择器决定
 const stripExt = (value) => String(value).trim().replace(/\.(mcpack|mcaddon|zip)$/i, '');
 // 批量模式与单文件模式共用渲染/翻译函数：按当前模式取对应状态和容器
@@ -531,7 +533,8 @@ async function translateValues(texts, from, to) {
       });
       return found === item.codes.length ? restored : texts[index];
     }));
-  }));
+  // 请求异常（网络断开/服务不可用）：不传时 Promise 永不 resolve，按钮会卡在“翻译中”，这里回落原文
+  }, () => { snackbar('翻译服务暂时不可用，本次保留原文，请稍后重试'); resolve(texts); }));
 }
 
 // 导出文件名：自定义输入优先（自动剥掉误输后缀），空值回退源文件名；后缀由选择器决定
