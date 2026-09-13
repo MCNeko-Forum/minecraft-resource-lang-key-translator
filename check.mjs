@@ -1,280 +1,162 @@
-// 最小自检：stub DOM 加载 app.js，验证语言表完整性、定义齐全和注释保留输出（node check.mjs）
+// 最小自检：stub DOM 加载 app.js 与官方术语表，验证统一入口架构、level.dat 解析回写与各解析器（node check.mjs）
 import { readFileSync } from 'node:fs';
+import { gzipSync, deflateSync, gunzipSync, inflateSync } from 'node:zlib';
 
-const stub = () => ({ addEventListener() {}, classList: { toggle() {} }, style: {}, innerHTML: '', textContent: '', click() {}, open: false, value: '' });
+const stub = () => ({ addEventListener() {}, classList: { toggle() {} }, style: {}, innerHTML: '', textContent: '', click() {}, open: false, value: '', dataset: {}, querySelectorAll: () => [], querySelector: () => null, removeAttribute() {}, setAttribute() {} });
 globalThis.document = { getElementById: () => stub(), querySelectorAll: () => [], querySelector: () => null, documentElement: { classList: { toggle() {} } }, createElement: () => stub() };
-globalThis.window = {};
+globalThis.window = globalThis;
+globalThis.window.addEventListener = () => {};
 globalThis.location = { hash: '' };
-globalThis.history = { replaceState() {} };
+globalThis.localStorage = { getItem: () => null, setItem: () => {}, removeItem: () => {} };
+globalThis.pako = { ungzip: (b) => gunzipSync(b), inflate: (b) => inflateSync(b) };
+
+// Node.js 环境下的压缩流辅助函数
+globalThis.streamBytes = async (bytes, stream) => {
+  if (stream.constructor.name === 'CompressionStream') {
+    const format = stream.writable?.__format || 'gzip'; // stub：从构造参数推断
+    return format === 'gzip' ? gzipSync(bytes) : deflateSync(bytes);
+  }
+  return bytes;
+};
+globalThis.CompressionStream = class CompressionStream {
+  constructor(format) { this.writable = { __format: format }; }
+};
 
 const ok = (condition, message) => { if (!condition) throw new Error('自检失败：' + message); };
 globalThis.ok = ok;
-globalThis.__css = readFileSync(new URL('./static/css/styles.css', import.meta.url), 'utf8');
-globalThis.__src = readFileSync(new URL('./static/js/app.js', import.meta.url), 'utf8');
-
+const officialSrc = readFileSync(new URL('./static/js/glossary-official.js', import.meta.url), 'utf8');
 const src = readFileSync(new URL('./static/js/app.js', import.meta.url), 'utf8');
-// index.html 防外部覆盖：关键新增元素必须存在，否则运行时 $() 会拿到 null
 const html = readFileSync(new URL('./index.html', import.meta.url), 'utf8');
 const css = readFileSync(new URL('./static/css/styles.css', import.meta.url), 'utf8');
-ok(/id="overwrite-dialog"/.test(html) && /id="overwrite-confirm"/.test(html) && /id="overwrite-cancel"/.test(html), 'index.html 应有覆盖确认弹窗 overwrite-dialog 及其按钮');
-  ok(/value="info">信息/.test(html) && /data-mode="info"/.test(html), 'index.html 应有“信息”标签页及对应面板');
-  ok(html.includes('https://github.com/MCNeko-Forum/minecraft-resource-lang-key-translator'), '信息页应包含本项目仓库地址');
-  ok(html.includes('MIT License'), '信息页应包含 MIT 协议链接');
-  ok(src.includes('history.replaceState') && src.includes("location.hash.slice(1)"), '切换标签页应写入 URL hash，刷新后恢复当前标签页');
-  // SEO：描述/关键词/Open Graph/JSON-LD/favicon/theme-color
-  ok(/name="description"/.test(html) && /name="keywords"/.test(html), 'index.html 应有 meta description 与 keywords（SEO）');
-  ok(/property="og:title"/.test(html) && /property="og:description"/.test(html) && /property="og:site_name"/.test(html), 'index.html 应有 Open Graph 标签（社交分享）');
-  ok(/rel="icon"/.test(html) && /name="theme-color"/.test(html), 'index.html 应有 favicon（data URI SVG）与 theme-color');
-  const ldJson = html.match(/<script type="application\/ld\+json">\s*([\s\S]*?)\s*<\/script>/)?.[1];
-  ok(ldJson && JSON.parse(ldJson)['@type'] === 'WebApplication', 'JSON-LD 结构化数据应为合法 JSON 的 WebApplication');
-  // 深色模式必须切换 MDUI 官方类名，否则 MDUI 组件（tabs/输入框/下拉栏）tokens 不变黑
-  ok(src.includes("classList.toggle('mdui-theme-dark')"), '主题切换应切换 MDUI 官方类 mdui-theme-dark');
-  ok(css.includes(':root.mdui-theme-dark') && !css.includes(':root.dark'), 'styles.css 深色变量应挂在 :root.mdui-theme-dark 下');
-  // 品牌主色 #FFA500：MDUI 主色 token 全套覆盖（"r, g, b" 三元组格式，组件内 rgb() 包一层）+ theme-color 同步
-  ok(css.includes('--mdui-color-primary-light: 255, 165, 0') && css.includes('--mdui-color-primary-dark: 255, 165, 0'), 'styles.css 应覆盖 MDUI 主色 token 为 #FFA500 的 RGB 三元组（light/dark）');
-  ok(html.includes('<meta name="theme-color" content="#FFA500">'), 'index.html theme-color 应为品牌色 #FFA500');
-  // 移动端预览框溢出防护：min-width:0 切断 min-content 传播链 + align-self:stretch 保证 column 布局下占满行宽
-  ok(css.includes('align-self: stretch') && css.includes('.review-box { border: 1px solid var(--border); border-radius: 12px; min-width: 0; }'), 'styles.css 预览框应有移动端溢出防护（min-width:0 + align-self:stretch）');
-  // MDUI text-field 的浮动 label 单行不换行：超长 label 会把卡片撑出屏幕（移动端"输入框跑外面"的根因），label 必须短（前导空格排除 aria-label）
-  const longLabels = src.match(/ label="[^"]{13,}"/g) || [];
-  ok(longLabels.length === 0, 'text-field/select 的 label 不应超过 12 个字符（超长浮动 label 会撑破移动端布局）：' + longLabels.join(' | '));
-  // 默认源文件应优先选第一个能识别出官方语言的（en_US.lang 等），否则上传顺序一变就选到 readme.lang 之类
-  ok(src.includes('pickDefaultSourceFile(group.files)') && src.includes('BEDROCK_LANGUAGES[normalizeLanguage(item.language)]'), '默认源文件应优先选第一个能识别官方语言的文件（pickDefaultSourceFile）');
-  // 翻译服务：上游 api.translate.zvo.cn 开源服务负载过高经常故障，切 client.edge（微软 Edge 翻译接口，浏览器直连免服务器）
-  ok(src.includes("translate?.service?.use?.('client.edge')"), '应切换翻译服务为 client.edge（上游开源服务负载过高经常故障）');
-  // 设置弹窗：顶栏设置入口 + 术语表（localStorage 持久化），小屏全屏/大屏窗口
-  ok(html.includes('id="settings-toggle"') && html.includes('id="settings-dialog"') && html.includes('id="glossary-add"') && html.includes('id="glossary-list"'), '顶栏应有设置入口，设置弹窗含术语表列表与添加按钮');
-  ok(src.includes('mc-lang-glossary') && src.includes('const renderGlossary'), '术语表应可增删改并持久化到 localStorage（mc-lang-glossary）');
 
-ok(html.includes('./static/js/app.js') && html.includes('./static/css/styles.css') && html.includes('./static/css/fonts.css') && !/src="\.\/app\.js"/.test(html) && !/href="\.\/styles\.css"/.test(html), 'index.html 静态资源应引用 static 目录（app.js/styles.css/fonts.css）');
-  ok(css.includes("'Alibaba PuHuiTi', Inter"), 'styles.css 全局字体栈应以 Alibaba PuHuiTi 开头（否则字体文件不会被请求）');
-// 文件名控件已移到 JS 渲染的导出区：index.html 导入卡片不应残留旧控件（否则重复出现两套输入框）
-ok(!/id="archive-filename"|id="archive-ext"|id="single-filename"/.test(html), 'index.html 不应残留旧的文件名输入框/后缀下拉栏（由 JS 在导出区渲染）');
-// 批量模式：tab、多选上传 input、独立 workspace
-ok(/value="archive-batch"/.test(html) && /整包模式（批量）/.test(html), 'index.html 应有整包模式（批量）标签');
-ok(/value="single-file-batch"/.test(html) && /单语言文件模式（批量）/.test(html), 'index.html 应有单语言文件模式（批量）标签');
-ok(/id="archive-batch-input"[^>]*multiple/.test(html) && /id="single-batch-input"[^>]*multiple/.test(html), '批量模式上传 input 应支持 multiple 多选');
-ok(/id="archive-batch-workspace"/.test(html) && /id="single-batch-workspace"/.test(html), '批量模式应有独立 workspace');
-// 标签页单行 + 可滑动
-ok(/mdui-tabs::part\(container\)/.test(css) && /flex-wrap: nowrap/.test(css) && /overflow-x: auto/.test(css), '标签页容器应强制单行并支持横向滑动');
-ok(/mdui-tabs mdui-tab\s*\{[^}]*flex-shrink: 0/.test(css), '标签项不应被压缩，保持完整文字');
-ok(/\.folder-name-input\s*\{[^}]*border: 1px solid transparent/.test(css) && /\.folder-name-input:focus/.test(css), '文件夹名输入框应默认无边框（看似标题）聚焦时显示边框');
-// 外部资源统一走 cdn.jsdmirror.com，不再依赖 unpkg/jsdelivr/googleapis
-ok(!/unpkg\.com|cdn\.jsdelivr\.net|fonts\.googleapis\.com/.test(html), '不应再引用 unpkg/jsdelivr/googleapis 的外部资源');
-ok((html.match(/cdn\.jsdmirror\.com/g) || []).length === 5, '应有 5 个外部资源引用 cdn.jsdmirror.com，实际 ' + (html.match(/cdn\.jsdmirror\.com/g) || []).length);
-// 一键翻译：弹窗结构
-ok(/id="batch-translate-dialog"/.test(html) && /id="batch-translate-confirm"/.test(html) && /id="batch-translate-cancel"/.test(html) && /id="batch-translate-list"/.test(html), 'index.html 应有一键翻译覆盖确认弹窗及复选框列表容器');
-ok(/\$\('batch-translate-confirm'\)\.addEventListener/.test(src) && /\$\('batch-translate-cancel'\)\.addEventListener/.test(src), '一键翻译弹窗的确认/取消按钮应绑定事件');
-ok(/batch-translate-list'\)\.querySelectorAll\('mdui-checkbox'\)/.test(src) && /\.filter\(\(box\) => box\.checked\)/.test(src), '确认时应收集勾选的复选框决定覆盖哪些包');
+// ===== 单文件模式（index.html）=====
+ok(/id="file-input"/.test(html) && !/multiple/.test(html.match(/id="file-input"[^>]*>/)?.[0] || ''), '上传 input 应为单文件模式（无 multiple 属性）');
+ok(/\.mcworld/.test(html) && /\.mctemplate/.test(html), '应支持世界文件格式');
+ok(['service', 'scope', 'glossary', 'about'].every((v) => html.includes('value="' + v + '"')), '设置弹窗应有四个标签页（服务/范围/术语/关于）');
+ok(['lang', 'manifest', 'signs', 'books', 'customNames', 'misc', 'npc', 'scripts', 'officialGlossary'].every((v) => html.includes('data-scope="' + v + '"')), '翻译范围应有 9 个开关（语言/清单/世界细分×4/NPC/脚本/官方术语）');
+ok(['signs', 'books', 'customNames'].every((v) => new RegExp('data-scope="' + v + '"\\s+disabled').test(html)), '世界深层内容开关（告示牌/书/自定义名称）应禁用（LevelDB 不可改写）');
+ok(!/data-scope="misc"[^>]*disabled/.test(html), '世界杂项开关应可用（世界名称可翻译）');
+ok(html.includes('levelname.txt'), '应支持 levelname.txt 世界名同步');
+ok(html.indexOf('glossary-official.js') < html.indexOf('app.js'), '官方术语数据应在 app.js 之前加载');
+ok(html.includes('id="overwrite-dialog"') && html.includes('id="overwrite-confirm"'), '应有覆盖确认弹窗');
+ok(!html.includes('id="batch-translate-dialog"') && !html.includes('id="confirm-dialog"'), '不应有批量翻译和删除确认弹窗（已改为单文件模式）');
+// SEO 与外部资源
+ok(/name="description"/.test(html) && /name="keywords"/.test(html) && /property="og:title"/.test(html) && /rel="icon"/.test(html), 'SEO 基础标签应齐备');
+const ldJson = html.match(/<script type="application\/ld\+json">\s*([\s\S]*?)\s*<\/script>/)?.[1];
+ok(ldJson && JSON.parse(ldJson)['@type'] === 'WebApplication', 'JSON-LD 应为合法 JSON 的 WebApplication');
+ok((html.match(/cdn\.jsdmirror\.com/g) || []).length === 5, '应有 5 个外部资源引用 cdn.jsdmirror.com');
+// ===== 样式 =====
+ok(css.includes('.scope-row') && css.includes('.settings-tabs') && css.includes('.service-option'), '设置页标签/开关行/服务行样式应存在');
+ok(css.includes('.settings-panel') && css.includes('.settings-panel[active]'), 'tab 面板样式应有默认隐藏与激活显示');
+ok(css.includes(':root.mdui-theme-dark') && css.includes('--mdui-color-primary-light: 255, 165, 0'), '深色模式与品牌色 token 应保留');
+ok(css.includes('min-width: 0') && css.includes('mdui-select::part(menu)'), '预览框溢出防护与下拉限高应保留');
+// ===== 源码级断言 =====
+ok(src.includes("classList.toggle('mdui-theme-dark')"), '主题切换应切换 MDUI 官方类 mdui-theme-dark');
+ok(src.includes('ponytail:'), '脚本字符串启发式的已知局限应有 ponytail 注释');
+ok(src.includes('state.item') && !src.includes('state.items'), 'state 应为单文件对象（state.item）而非数组（state.items）');
+ok(src.includes('hasUnsavedChanges') && src.includes('beforeunload'), '应有未保存标记与 beforeunload 事件');
+ok(src.includes('overwrite-dialog') || src.includes('overwrite-confirm'), '应有覆盖确认逻辑');
+ok(src.includes('renderWorkspace') && src.includes("item.kind === 'lang'"), '应有单文件渲染函数区分 lang 和 archive');
+ok(/window\.OFFICIAL_GLOSSARY/.test(officialSrc) && /"Diamond Sword", "钻石剑"/.test(officialSrc), '官方术语表应含 Diamond Sword → 钻石剑');
+
 const checks = `
 ;(async function () {
-  const css = globalThis.__css;
-  const src = globalThis.__src;
-  const bedrock = Object.keys(BEDROCK_LANGUAGES);
-  const translate = Object.keys(TRANSLATE_LANGUAGES);
-  ok(bedrock.length === 29, 'BEDROCK_LANGUAGES 应有 29 种语言，实际 ' + bedrock.length);
-  ok(bedrock.length === translate.length && bedrock.every((k) => translate.includes(k)), 'BEDROCK_LANGUAGES 与 TRANSLATE_LANGUAGES 键不一致');
-  ok(typeof languageMenuItems === 'function', 'languageMenuItems 未定义');
-  ok(typeof renderLines === 'function', 'renderLines 未定义');
-  ok(languageMenuItems().includes('zh_CN'), '语言菜单缺少 zh_CN');
-  ok(groupCard.toString().includes('\${generatedList(group, groupIndex)}'), 'groupCard 缺少已翻译列表的插入点');
-  ok(renderArchive.toString().includes('group.selection'), 'renderArchive 缺少重渲染后恢复选择的逻辑');
-  ok(applyPackChanges.toString().includes('generated.edited ?? renderLines'), '导出必须优先使用校对编辑内容');
-  ok(applyPackChanges.toString().includes('syncLanguagesManifest'), '导出必须同步语言清单');
-  ok(generatedList.toString().includes('data-review-lang') && !generatedList.toString().includes('data-review=\\"'), 'generatedList 应使用单文件整体编辑框');
-  ok(singleResultCard.toString().includes('data-single-review-lang') && !singleResultCard.toString().includes('data-single-review=\\"'), 'singleResultCard 应使用单文件整体编辑框');
-  ok(typeof singleTargetOptions === 'function' && singleTargetOptions.toString().includes('results'), '单语言文件模式目标语言应按已有翻译结果禁用');
-  ok(translateSingle.toString().includes('results.push') && translateSingle.toString().includes("targetLanguages = []"), '单语言文件翻译应追加结果并清空目标选择');  ok(renderSingle.toString().includes('multiple') && translateSingle.toString().includes('targets.length'), '单语言文件模式目标语言应可多选');
-  ok(singleResultCard.toString().includes('data-delete-single') && singleResultCard.toString().includes('data-download-single'), '单语言文件结果列表应有删除和下载按钮');
-  ok(confirmDelete.toString().includes('single.pendingDelete'), '删除单语言文件翻译结果应复用确认弹窗');
-  ok(typeof downloadAllSingle === 'function' && downloadAllSingle.toString().includes('JSZip') && singleResultCard.toString().includes('data-download-all'), '单语言文件模式应支持打包下载全部结果');
-  ok(downloadAllSingle.toString().includes('state.single.file.name, state.single.edited ?? state.single.file'), '打包下载应包含上传的源语言文件（修改过则用修改后内容）');
-  // 源文件预览/修改：两种单文件模式都要有默认折叠的编辑框，编辑后重新解析并影响翻译和打包
-  ok(typeof applySourceEdit === 'function' && applySourceEdit.toString().includes('parseText'), '源文件编辑应重新解析内容');
-  ok(renderSingle.toString().includes('data-single-source-edit') && renderSingle.toString().includes('review-box'), '单文件模式应有默认折叠的源文件预览框');
-  ok(renderSingleBatch.toString().includes('data-batch-source-edit') && renderSingleBatch.toString().includes('review-box'), '批量单文件模式应有默认折叠的源文件预览框');
-  ok(handleSingleReview.toString().includes('applySourceEdit'), '源文件编辑输入应实时重新解析');
-  ok(downloadAllSingleBatch.toString().includes('item.edited ?? item.file'), '批量打包下载源文件应用修改后内容');
-  // 整包模式源文件预览/修改：预读文本、折叠编辑框、翻译和导出用修改后内容
-  ok(parseArchiveGroups.toString().includes('text: extension'), '整包解析应预读语言文件文本供预览');
-  ok(groupCard.toString().includes('data-archive-source-edit') && groupCard.toString().includes('item.edited ?? item.text'), '整包模式文件行应有源文件预览编辑框');
-  ok(translateGroup.toString().includes('source.edited ?? source.text'), '整包翻译应优先使用修改后的源文件内容');
-  ok(runBatchTranslate.toString().includes('source.file.edited ?? source.file.text'), '一键翻译应优先使用修改后的源文件内容');
-  ok(applyPackChanges.toString().includes('item.edited != null') && applyPackChanges.toString().includes('zip.file(item.path, item.edited)'), '导出应写入修改后的源文件内容');
-  ok(handleArchiveReview.toString().includes('data-archive-source-edit'), '整包源文件编辑输入应实时保存');
-  ok(!groupCard.toString().includes('>可修改<') && !renderSingle.toString().includes('>可修改<') && !renderSingleBatch.toString().includes('>可修改<'), '源文件预览框不应显示“可修改”标签');
-  ok(!groupCard.toString().includes("item.language || '未识别语言'"), '语言文件列表不应显示语言代码卡片');
-  ok(groupCard.toString().includes('个文件，点击展开') && groupCard.toString().indexOf('review-box') < groupCard.toString().indexOf('class="file-list"'), '整包模式语言文件列表应默认折叠');
-  // 简化界面：所有模式删除“源语言”下拉，自动取第一个识别出官方语言的文件（单文件模式取文件名推断，识别不出回落 en_US）
-  ok(!src.includes('data-source-group') && !src.includes('id="single-source"') && !src.includes('data-batch-source"') && !src.includes('sourceLanguageMenuItems'), '所有模式都不应有源语言下拉（data-source-group/single-source/data-batch-source/sourceLanguageMenuItems）');
-  ok(translateGroup.toString().includes('pickDefaultSourceFile(group.files)'), '整包模式源文件应自动取 pickDefaultSourceFile（第一个识别出官方语言的）');
-  ok(translateSingle.toString().includes("state.single.sourceLanguage || 'en_US'") && translateBatchSingle.toString().includes("item.sourceLanguage || 'en_US'"), '单文件两模式源语言应自动推断，识别不出回落 en_US');
-  // .mcpack.zip / .mcaddon.zip 双后缀：导出格式应识别为 mcpack/mcaddon（去除结尾 .zip），单包与批量共用 archiveExtOf
-  // 双后缀 + 副本标记：括号内容不限数字（1 / copy / 副本２），半角/全角/无空格都要识别
-  ok(archiveExtOf('foo.mcpack.zip') === 'mcpack' && archiveExtOf('foo.mcpack (1).zip') === 'mcpack' && archiveExtOf('foo.mcpack(1).zip') === 'mcpack' && archiveExtOf('foo.mcaddon（２）.zip') === 'mcaddon' && archiveExtOf('FOO.MCPACK　（3）.ZIP') === 'mcpack', 'archiveExtOf 应识别半角/全角/无空格的副本标记双后缀');
-  ok(archiveExtOf('foo.mcpack (copy).zip') === 'mcpack' && archiveExtOf('foo.mcpack（副本2）.zip') === 'mcpack' && archiveExtOf('foo.mcaddon(已转换).zip') === 'mcaddon', 'archiveExtOf 括号内容不限数字（copy/副本/文字）');
-  ok(archiveExtOf('foo.mcpack (1)(2)(3).zip') === 'mcpack' && archiveExtOf('foo.mcaddon（1）（2）.zip') === 'mcaddon', 'archiveExtOf 应识别多重括号组 (1)(2)(3)');
-  // .mcpack/.mcaddon 与 .zip 之间任意文本（不含点）都视为副本标记：name.mcaddon - 副本.zip → name.mcaddon
-  ok(archiveExtOf('name.mcaddon - 副本.zip') === 'mcaddon' && packBaseName('name.mcaddon - 副本.zip') === 'name', '副本标记应为任意文本（- 副本 等）不限括号');
-  ok(archiveExtOf('foo.MCPACK - copy 2.zip') === 'mcpack' && packBaseName('foo.MCPACK - copy 2.zip') === 'foo', '任意文本副本标记应大小写不敏感');
-  ok(archiveExtOf('my.mcpack.collection.zip') === 'zip' && packBaseName('my.mcpack.collection.zip') === 'my.mcpack.collection', '中间含点的 .mcpack.collection.zip 不算双后缀（防误吞普通 zip），回落 zip');
-  ok(packBaseName('foo.mcpack (1)(2)(3).zip') === 'foo', 'packBaseName 应整体去除多重括号组');
-  ok(archiveExtOf('plain.zip') === 'zip' && archiveExtOf('pack.mcpack') === 'mcpack' && archiveExtOf('x.rar') === 'zip', 'archiveExtOf 普通 zip/单后缀/回落判定应正确');
-  ok(typeof packBaseName === 'function' && packBaseName('foo.mcpack (1).zip') === 'foo' && packBaseName('bar.mcaddon（2）.zip') === 'bar' && packBaseName('foo.mcpack (copy).zip') === 'foo' && packBaseName('plain.zip') === 'plain' && packBaseName('pack.mcpack') === 'pack', 'packBaseName 应去除双后缀与副本标记（含非数字内容）得到基础名');
-  ok(doLoadArchiveBatch.toString().includes('archiveExtOf(file.name)'), '批量整包模式后缀识别应复用 archiveExtOf');
-  ok(exportArchive.toString().includes('packBaseName(pack.file.name)') && downloadEachPack.toString().includes('packBaseName(pack.file.name)'), '批量导出（打包/逐包）文件名应使用 packBaseName 去除双后缀与副本标记');
-  ok(exportArchive.toString().includes('used.has(name)'), '打包下载全部应对重名包自动加 _1/_2 后缀（JSZip 同名 entry 会互相覆盖）');
-  // 翻译服务：上游 api.translate.zvo.cn 开源服务经常故障，切 client.edge（微软 Edge 翻译接口）+ 失败回调防卡死
-  ok(translateValues.toString().includes("'翻译服务暂时不可用，本次保留原文，请稍后重试'"), 'translateValues 应传失败回调：请求异常时回落原文，而不是让按钮永远卡在翻译中');
-  // manifest 翻译：整包模式，目标语言单选，源语言 translate.language.recognition 自动识别
-  ok(typeof parseManifests === 'function' && doLoadArchive.toString().includes('parseManifests(file)'), '整包模式应解析包内 manifest.json（parseManifests）');
-  ok(translateManifest.toString().includes('recognition') && translateManifest.toString().includes("|| 'en_US'"), 'manifest 源语言应自动识别（translate.language.recognition，识别不出回落英语）');
-  ok(!translateManifest.toString().match(/data-source-group|data-target-group/), 'manifest 翻译不依赖分组语言选择');
-  ok(applyPackChanges.toString().includes('JSON.stringify(manifest.data'), '导出应把 manifest 译文写回清单');
-  ok(exportArchive.toString().includes('applyPackChanges(zip, as.groups, as.manifests)'), '整包导出应传入 manifests 写回翻译结果');
-  ok(renderArchive.toString().includes('#manifest-target-lang') && !renderArchive.toString().match(/multiple[^>]*id="manifest-target-lang/), 'manifest 翻译目标语言应为单选');
-  ok(fileLabel('zh_CN.lang', 'zh_CN') === 'zh_CN.lang（简体中文（中国大陆））', 'fileLabel 应输出“文件名（语言中文名）”');
-  ok(fileLabel('custom.lang', null) === 'custom.lang', 'fileLabel 无语言时应退回纯文件名');
-  ok(groupCard.toString().includes('fileLabel(item.fileName, item.language)') && generatedList.toString().includes('fileLabel('), '两个列表的文件名都应附带语言中文名');
-  ok(downloadSingle.toString().includes('result.edited ?? renderLines'), 'downloadSingle 必须优先使用校对编辑内容');
-  ok(translateValues.toString().includes('waitForRateLimit'), 'translateValues 必须经过 3 秒限流');
-  ok(!translateGroup.toString().includes('个格式问题'), '整包模式存在格式问题时不应弹消息条提示，直接忽略继续翻译');
-  // en_UK 别名映射到 en_GB：目标语言列表只含 29 种标准语言，源语言下拉可显示非标准代码
-  ok(LANGUAGE_ALIASES.en_UK === 'en_GB' && typeof normalizeLanguage === 'function', 'en_UK 应通过别名表映射到 en_GB');
-  ok(!Object.keys(BEDROCK_LANGUAGES).includes('en_UK'), '目标语言列表不应包含 en_UK');
-  ok(normalizeLanguage('en_UK') === 'en_GB' && normalizeLanguage('zh_CN') === 'zh_CN', 'normalizeLanguage 应归一化 en_UK 且不影响标准代码');
-  ok(fileLabel('en_UK.lang', 'en_UK') === 'en_UK.lang（英语（英国））', 'en_UK 文件应显示映射后的中文名');
-  ok(translateValues.toString().includes('TRANSLATE_LANGUAGES[normalizeLanguage(from)]'), '翻译源语言应经别名归一化（en_UK 可正确翻译）');
-  ok(translateGroup.toString().includes('button.disabled = true') && translateGroup.toString().includes('翻译中'), 'translateGroup 必须禁用按钮并显示翻译进度');
-  ok(translateGroup.toString().includes('spinning') && translateSingle.toString().includes('spinning'), '翻译中必须显示旋转图标');
-  ok(targetOptions.toString().includes('group.generated'), '目标语言选项应把已生成的翻译结果视为已存在并禁用');
-  ok(generatedList.toString().includes('data-delete-generated'), '已翻译列表应有删除按钮');
-  ok(typeof requestDeleteGenerated === 'function' && confirmDelete.toString().includes('pending.generated'), '删除翻译结果应复用确认弹窗');
-  ok(translateGroup.toString().includes('targets: []'), '翻译完成后应清空目标语言选择');
-  // 行为验证：生成 zh_CN 后该语言选项禁用，删除翻译结果后恢复可选
-  const optGroup = { files: [{ deleted: false, language: 'en_US' }], generated: [{ target: 'zh_CN' }] };
-  ok(targetOptions(optGroup).includes('value="zh_CN" disabled'), '已生成的 zh_CN 选项应禁用');
-  ok(!targetOptions(optGroup).includes('value="ja_JP" disabled'), '未生成的 ja_JP 选项不应禁用');
-  ok(translateSingle.toString().includes('disabled = true'), 'translateSingle 必须禁用按钮');
-  // 限流行为：并发两次调用应排队，第二次至少等待约 3 秒
-  const t0 = Date.now();
-  await Promise.all([waitForRateLimit(), waitForRateLimit()]);
-  ok(Date.now() - t0 >= 2900, '限流器并发调用应排队至少 3 秒，实际 ' + (Date.now() - t0) + 'ms');
-  // 行为验证：§ 格式代码替换为占位符后整句翻译，占位符不完整时回退原文（先关闭默认勾选的删除选项）
-  ok(state.options.stripCodes === true, 'stripCodes 应默认勾选');
-  state.options.stripCodes = false;
-  nextRequestSlot = 0;
-  let sentTexts = null;
-  window.translate = { request: { translateText: (req, cb) => { sentTexts = req.texts; cb({ result: 1, text: req.texts.map((t) => '訳' + t) }); } } };
-  const styled = await translateValues(['Spawn §fJapan§4ese §fOfficer', '纯文本'], 'en_US', 'ja_JP');
-  ok(sentTexts.includes('Spawn %c1%Japan%c2%ese %c3%Officer'), '应把 § 代码替换为占位符后整句发送，实际：' + JSON.stringify(sentTexts));
-  ok(!sentTexts.some((t) => t.includes('§')), '发送给翻译接口的文本不应包含 § 格式代码');
-  ok(styled[0] === '訳Spawn §fJapan§4ese §fOfficer', '译文应按占位符还原 § 代码，实际：' + styled[0]);
-  ok(styled[1] === '訳纯文本', '无格式代码文本应整条翻译，实际：' + styled[1]);
-  // 占位符被翻译引擎丢失：该条回退原文，不输出错乱颜色
-  window.translate = { request: { translateText: (req, cb) => { cb({ result: 1, text: req.texts.map(() => '占位符丢失') }); } } };
-  nextRequestSlot = 0;
-  const fallback = await translateValues(['Spawn §4Ba'], 'en_US', 'ja_JP');
-  ok(fallback[0] === 'Spawn §4Ba', '占位符不完整时该条应回退原文，实际：' + fallback[0]);
-  // 行为验证：高级选项勾选后删除 § 及其后跟随的数字/字母，输出纯文本译文
-  ok(groupCard.toString().includes('data-strip-codes') && renderSingle.toString().includes('data-strip-codes') && renderSingleBatch.toString().includes('data-strip-codes'), '每个模式的翻译按钮上方都应有删除格式代码的高级选项');
-  state.options.stripCodes = true;  nextRequestSlot = 0;
-  window.translate = { request: { translateText: (req, cb) => { sentTexts = req.texts; cb({ result: 1, text: req.texts.map((t) => '訳' + t) }); } } };
-  const stripped = await translateValues(['Spawn §fJapan§4ese §fOfficer'], 'en_US', 'ja_JP');
-  ok(sentTexts[0] === 'Spawn Japanese Officer', '勾选后应删除格式代码再翻译，实际：' + JSON.stringify(sentTexts));
-  ok(stripped[0] === '訳Spawn Japanese Officer', '勾选后译文不应包含 § 代码，实际：' + stripped[0]);
-  state.options.stripCodes = false;
-  const parsed = parseText('## note\\na=x');
-  const out = renderLines(parsed, ['甲']);
-  ok(out === '## note\\na=甲\\n', 'renderLines 输出异常：' + JSON.stringify(out));
-  ok(typeof syncLanguagesManifest === 'function', 'syncLanguagesManifest 未定义');
-  // 无清单：创建标准 languages.json 并加入新语言；已删除语言被移除
-  const written = {};
-  const zipStub = { file: (p, c) => { written[p] = c; }, remove: (p) => { delete written[p]; } };
-  const group = {
-    path: 'texts',
-    files: [
-      { path: 'texts/en_US.lang', extension: 'lang', language: 'en_US', deleted: false },
-      { path: 'texts/fr_FR.lang', extension: 'lang', language: 'fr_FR', deleted: true }
-    ],
-    zipEntries: {},
-    generated: [{ target: 'zh_CN', parsed: { entries: [], lines: [] }, translated: [] }]
+  const eq = (a, b) => a.length === b.length && a.every((v, i) => v === b[i]);
+  const concat = (list) => { const out = new Uint8Array(list.reduce((n, c) => n + c.length, 0)); let p = 0; for (const c of list) { out.set(c, p); p += c.length; } return out; };
+  // 构造原生（未压缩）level.dat：[int32 版本][int32 NBT 大小] + 小端 NBT（int / list / string / byte 字段 + LevelName）
+  const buildRawLevel = (name) => {
+    const enc = new TextEncoder();
+    const nameBytes = enc.encode(name);
+    const u16 = (n) => new Uint8Array([n & 255, n >> 8]);
+    const i32 = (n) => new Uint8Array([n & 255, (n >> 8) & 255, (n >> 16) & 255, (n >> 24) & 255]);
+    const str = (s) => { const b = enc.encode(s); return concat([u16(b.length), b]); };
+    const nbt = concat([
+      new Uint8Array([10]), str(''),
+      new Uint8Array([3]), str('GameType'), i32(1),
+      new Uint8Array([9]), str('SpawnList'), new Uint8Array([5]), new Uint8Array([0, 0, 0, 0]),
+      new Uint8Array([8]), str('LevelName'), u16(nameBytes.length), nameBytes,
+      new Uint8Array([1]), str('Difficulty'), new Uint8Array([2]),
+      new Uint8Array([0])
+    ]);
+    return concat([i32(10), i32(nbt.length), nbt]);
   };
-  await syncLanguagesManifest(zipStub, group);
-  const codes = JSON.parse(written['texts/languages.json']);
-  ok(Array.isArray(codes) && codes.includes('zh_CN'), '清单应包含新生成的 zh_CN');
-  ok(!codes.includes('fr_FR'), '清单应移除已删除且未重新生成的 fr_FR');
-  // 自定义下载文件名与覆盖确认
+
+  // ===== 语言表与工具函数 =====
+  const bedrock = Object.keys(BEDROCK_LANGUAGES);
+  ok(bedrock.length === 29, 'BEDROCK_LANGUAGES 应有 29 种语言，实际 ' + bedrock.length);
+  ok(bedrock.every((k) => TRANSLATE_LANGUAGES[k]), 'BEDROCK_LANGUAGES 与 TRANSLATE_LANGUAGES 键应一致');
+  ok(LANGUAGE_ALIASES.en_UK === 'en_GB' && normalizeLanguage('en_UK') === 'en_GB', 'en_UK 应映射到 en_GB');
+  ok(fileLabel('zh_CN.lang', 'zh_CN') === 'zh_CN.lang（简体中文（中国大陆））' && fileLabel('custom.lang', null) === 'custom.lang', 'fileLabel 应输出“文件名（语言中文名）”，无语言时退回文件名');
   ok(stripExt('a.zip') === 'a' && stripExt('我的包.MCPACK') === '我的包' && stripExt('a.b.zip') === 'a.b', 'stripExt 应只剥掉下载后缀');
-  ok(typeof requestOverwrite === 'function' && typeof doLoadArchive === 'function' && typeof doLoadSingleFile === 'function', '覆盖确认拆分应存在 loadArchive/loadSingleFile 与 doLoadArchive/doLoadSingleFile');
-  ok(loadArchive.toString().includes('requestOverwrite') && loadSingleFile.toString().includes('requestOverwrite'), '两个模式再次上传都应先请求覆盖确认');
-  ok(requestOverwrite.toString().includes("'overwrite-dialog'") && requestOverwrite.toString().includes("'overwrite-text'"), '覆盖确认应设置提示文本并弹出 overwrite-dialog');
-  ok(doLoadArchive.toString().includes('exportName') && doLoadArchive.toString().includes('exportExt'), '整包上传后应自动填入下载文件名并识别后缀');
-  ok(doLoadSingleFile.toString().includes('exportName'), '单文件上传后应自动填入打包下载文件名');
-  ok(renderArchive.toString().includes('archive-filename') && renderArchive.toString().includes('archive-ext'), '整包模式导出区应渲染下载文件名输入框和后缀选择器');
-  ok(renderArchive.toString().includes('export-card'), '整包模式导出区应有白色背景卡片（export-card）');
-  ok(renderArchive.toString().indexOf('archive-filename') < renderArchive.toString().indexOf('id="export-archive"'), '文件名控件应渲染在导出资源包按钮上方');
-  ok(singleResultCard.toString().includes('single-filename'), '单文件模式结果卡片应渲染打包下载文件名输入框');
-  ok(singleResultCard.toString().indexOf('single-filename') < singleResultCard.toString().indexOf('data-download-all'), '文件名输入框应渲染在打包下载全部按钮上方');
-  ok(renderArchive.toString().includes('as.exportName = event.target.value') && renderSingle.toString().includes('state.single.exportName = event.target.value') && renderSingleBatch.toString().includes('state.singleBatch.exportName = event.target.value'), '文件名输入应写入 state 防止重渲染丢失');
-  ok(exportArchive.toString().includes('archiveExportName') && archiveExportName.toString().includes('exportExt'), '整包导出应使用自定义文件名与所选后缀');
-  ok(downloadAllSingle.toString().includes('state.single.exportName'), '打包下载应使用自定义文件名');
-  // 批量模式：加载、渲染、翻译、打包下载、覆盖确认
-  ok(typeof loadArchiveBatch === 'function' && typeof doLoadArchiveBatch === 'function' && typeof parseArchiveGroups === 'function', '批量整包加载函数应存在且解析逻辑复用 parseArchiveGroups');
-  ok(!loadArchiveBatch.toString().includes('requestOverwrite') && !loadSingleFiles.toString().includes('requestOverwrite'), '批量模式再次上传应直接追加而非弹覆盖确认');
-  ok(doLoadArchiveBatch.toString().includes('state.archiveBatch.packs') && doLoadSingleFiles.toString().includes('state.singleBatch.files'), '批量上传应追加到已有列表而非清空');
-  ok(OVERWRITE_LOADERS && OVERWRITE_LOADERS.archive === doLoadArchive && OVERWRITE_LOADERS.single === doLoadSingleFile, '覆盖确认应分发到单模式加载函数');
-  ok(doLoadArchiveBatch.toString().includes('flatMap'), '批量整包应生成跨包连续编号的扁平分组列表');
-  ok(doLoadArchiveBatch.toString().includes('!groups.length') && doLoadArchiveBatch.toString().includes('skipped'), '无语言文件的包不应进入批量列表并提示已忽略');
-  ok(renderArchive.toString().includes('pack-section') && renderArchive.toString().includes('pack-title'), '批量整包应按包分节渲染包名标题');
-  ok(renderArchive.toString().includes('data-delete-pack'), '批量整包包名旁应有删除整包按钮');
-  ok(renderArchive.toString().includes('(pack, packIndex)'), 'renderArchive 的 packs.map 回调必须带 packIndex 参数（否则 ReferenceError）');
-  ok(typeof requestDeletePack === 'function' && requestDeletePack.toString().includes('确认要删除'), '删除整包应复用确认弹窗并显示“确认要删除 文件名”');
-  ok(confirmDelete.toString().includes('packs.splice') && confirmDelete.toString().includes("pendingDelete?.pack"), '确认删除整包应从批量列表移除并重建分组索引');
-  ok(confirmDelete.toString().includes('archive-batch-name'), '确认删除整包后应同步更新已选择资源包计数');
-  ok(doLoadArchiveBatch.toString().includes('exportName: state.archiveBatch.exportName') && doLoadSingleFiles.toString().includes('exportName: state.singleBatch.exportName'), '批量追加时应保留已输入的下载文件名');
-  ok(renderArchive.toString().includes('打包下载全部'), '批量整包应有打包下载全部按钮');
-  ok(exportArchive.toString().includes('outer') && exportArchive.toString().includes('applyPackChanges'), '批量导出应把各包打进外层 zip 并复用单包变更逻辑');
-  ok(typeof downloadEachPack === 'function' && downloadEachPack.toString().includes('applyPackChanges'), '逐包下载应复用单包变更逻辑逐个导出');
-  ok(downloadEachPack.toString().includes('downloadBlob') && downloadEachPack.toString().includes('pack.ext'), '逐包下载应触发多个下载任务并保留原后缀');
-  ok(renderArchive.toString().includes('download-each-pack'), '批量导出卡应有逐包下载按钮');
-  ok(renderArchive.toString().indexOf('download-each-pack') < renderArchive.toString().indexOf('id="export-archive"'), '逐包下载按钮应在打包下载全部左边');
-  ok(exportArchive.toString().includes('pack.ext'), '批量导出各包应保留上传时识别的原后缀');
-  ok(typeof renderSingleBatch === 'function' && typeof translateBatchSingle === 'function' && typeof downloadAllSingleBatch === 'function' && typeof requestDeleteSingleBatch === 'function', '批量单文件核心函数应存在');
-  ok(translateBatchSingle.toString().includes('spinning') && translateBatchSingle.toString().includes('disabled = true') && translateBatchSingle.toString().includes('targets: []'), '批量单文件翻译应有进度、禁用按钮并清空本文件目标选择');
-  // 批量单文件一键翻译：跳过已有结果，源语言取各文件下拉已选值或文件名推断
-  ok(typeof translateAllSingleFiles === 'function', '批量单文件一键翻译函数应存在');
-  ok(renderSingleBatch.toString().includes('translate-all-single') && renderSingleBatch.toString().includes('batch-target-lang'), '批量单文件顶部应渲染一键翻译卡');
-  ok(translateAllSingleFiles.toString().includes("result.target === target") && translateAllSingleFiles.toString().includes('skipped'), '已有目标结果的文件应自动跳过');
-  ok(translateAllSingleFiles.toString().includes("item.sourceLanguage || 'en_US'"), '一键翻译源语言应自动取文件名推断（回落 en_US）');
-  ok(translateAllSingleFiles.toString().includes('spinning') && translateAllSingleFiles.toString().includes('disabled = true'), '一键翻译应禁用按钮并显示进度');
-  ok(renderSingleBatch.toString().includes('state.singleBatch.translateTarget = event.target.value'), '一键翻译目标语言选择应写入 state');
-  ok(batchResultsCard.toString().includes('data-batch-review-lang') && batchResultsCard.toString().includes('data-batch-delete-single') && batchResultsCard.toString().includes('data-batch-download-single'), '批量单文件结果列表应有校对、删除、下载');
-  ok(downloadAllSingleBatch.toString().includes('folder'), '批量单文件打包下载应按源文件分文件夹防重名');
-  ok(downloadAllSingleBatch.toString().includes('count + 1') && downloadAllSingleBatch.toString().includes('new Map'), '重名文件夹应加 _2、_3 递增数字后缀');
-  // 文件夹名可编辑：输入框实时写入 item.folderName，打包下载优先使用
-  ok(renderSingleBatch.toString().includes('data-batch-rename') && renderSingleBatch.toString().includes('item.folderName || stripExt(item.file.name)'), '文件名标题应显示为可编辑输入框（默认原文件名去后缀）');
-  ok(renderSingleBatch.toString().includes('.folderName = event.target.value'), '文件夹名输入应实时写入 item.folderName');
-  ok(downloadAllSingleBatch.toString().includes('item.folderName'), '打包下载应优先使用自定义文件夹名');
-  ok(confirmDelete.toString().includes('singleBatch.pendingDelete') && confirmDelete.toString().includes('renderSingleBatch'), '批量单文件删除应复用确认弹窗并重渲染');
-  ok(translateGroup.toString().includes('archiveState()') && renderArchive.toString().includes('archiveState()'), '整包渲染与翻译应通过 archiveState 兼容两种模式');
-  // 一键翻译：源文件取每包第 1 个，冲突检测 + 弹窗勾选覆盖（默认不勾）
-  ok(typeof packFirstSource === 'function' && typeof packHasTarget === 'function' && typeof translateAllPacks === 'function' && typeof runBatchTranslate === 'function', '一键翻译核心函数应存在');
-  ok(packFirstSource.toString().includes('pickDefaultSourceFile') && translateAllPacks.toString().includes('packFirstSource'), '一键翻译应取每包默认源文件（第一个能识别官方语言的）');
-  ok(packHasTarget.toString().includes('!item.deleted && item.language === target') && packHasTarget.toString().includes('generated'), '冲突判定应与 targetOptions 一致（已有文件+已生成结果）');
-  ok(renderArchive.toString().includes('translate-all-packs') && renderArchive.toString().includes('batch-target-lang'), '批量模式顶部应渲染一键翻译卡');
-  ok(translateAllPacks.toString().includes('batch-translate-dialog') && translateAllPacks.toString().includes('data-batch-pack'), '有冲突包时应弹窗列出复选框（默认不勾）');
-  ok(!translateAllPacks.toString().includes('checked>') || !/<mdui-checkbox[^>]*checked/.test(translateAllPacks.toString()), '冲突包复选框默认不勾选');
-  ok(translateAllPacks.toString().includes('runBatchTranslate(target, sources, new Set())'), '无冲突时直接执行翻译');
-  ok(runBatchTranslate.toString().includes('!override.has(index)') && runBatchTranslate.toString().includes('skipped'), '未勾选覆盖的冲突包应跳过');
-  ok(runBatchTranslate.toString().includes("gen.target !== target"), '覆盖时应先移除旧的同目标翻译结果');
-  ok(runBatchTranslate.toString().includes('item.language !== target'), '覆盖后原有同目标语言文件应从上方列表移除，只在已翻译文件中出现');
-  ok(runBatchTranslate.toString().includes('spinning') && runBatchTranslate.toString().includes('disabled = true'), '一键翻译应禁用按钮并显示进度');
-  ok($('batch-translate-confirm') !== undefined, '一键翻译确认按钮绑定应存在');
-  // 设置弹窗 + 翻译术语表：顶栏入口，localStorage 持久化，翻译时占位符强制替换译法
-  ok(translateValues.toString().includes('state.glossary') && translateValues.toString().includes('%g'), '翻译时应按术语表强制替换译法（%gN% 占位符机制）');
-  ok(css.includes('#settings-dialog::part(panel)') && css.includes('100dvh'), '设置弹窗小屏应网页内全屏（::part(panel) 覆盖）');
-  console.log('自检通过：29 种语言、映射一致、定义齐全、注释保留、清单同步正常');
+  ok(archiveExtOf('foo.mcpack.zip') === 'mcpack' && archiveExtOf('foo.mcpack (1)(2).zip') === 'mcpack' && archiveExtOf('foo.mcaddon（副本2）.zip') === 'mcaddon', '双后缀 + 副本标记应识别为对应扩展名');
+  ok(archiveExtOf('foo.mcworld (1).zip') === 'mcworld' && archiveExtOf('bar.mctemplate.zip') === 'mctemplate' && packBaseName('foo.mcworld（2）.zip') === 'foo', '世界双后缀（mcworld/mctemplate）应识别');
+  ok(archiveExtOf('my.mcpack.collection.zip') === 'zip' && archiveExtOf('x.rar') === 'zip' && packBaseName('plain.zip') === 'plain', '中间含点/未知后缀应回落 zip');
+  ok(inferLanguage('en_US.lang') === 'en_US' && inferLanguage('readme.txt') === '', 'inferLanguage 应从文件名推断语言');
+
+  // ===== parseLangText / exportLangText =====
+  const parsed = parseLangText('## note\\na=x\\n\\nbad line');
+  ok(parsed.filter(e => e.type === 'pair').length === 1 && parsed.find(e => e.type === 'pair')?.key === 'a', 'parseLangText 应提取键值对，注释与坏行保留');
+  ok(parsed.some(e => e.type === 'invalid'), '无分隔符的行应标记为 invalid');
+
+
+  // ===== level.dat 解析与回写 =====
+  const raw = buildRawLevel('Old Name');
+  const levelParsed = await parseLevelDat(raw);
+  ok(levelParsed?.oldName === 'Old Name', '原生 level.dat 应解析出世界名称');
+  const rebuilt = await buildLevelDat(levelParsed, '全新世界名称');
+  const again = await parseLevelDat(rebuilt);
+  ok(again.oldName === '全新世界名称', '回写后重新解析应得到新名称');
+  ok(new DataView(rebuilt.buffer, rebuilt.byteOffset, rebuilt.byteLength).getInt32(4, true) === rebuilt.length - 8, '头部 NBT 大小字段应随名称长度更新');
+  ok((await parseLevelDat(await buildLevelDat(await parseLevelDat(buildRawLevel('Very Long World Name Here')), 'W'))).oldName === 'W', '短名回写应正确收缩');
+  ok(await parseLevelDat(new Uint8Array([0, 0, 0, 8, 0, 0, 0, 2, 9, 99, 99])) === null, '垃圾字节应解析失败返回 null');
+
+  // gzip / zlib 嗅探与回写
+  const gzRaw = await streamBytes(buildRawLevel('Gzip World'), new CompressionStream('gzip'));
+  const gzParsed = await parseLevelDat(gzRaw);
+  ok(gzParsed.oldName === 'Gzip World', 'gzip level.dat 应嗅探解压');
+  const gzBack = await buildLevelDat(gzParsed, '压缩世界');
+  ok(gzBack[0] === 0x1f && gzBack[1] === 0x8b && (await parseLevelDat(gzBack)).oldName === '压缩世界', 'gzip 输入回写后应保持 gzip 且名称正确');
+  const zRaw = await streamBytes(buildRawLevel('Zlib World'), new CompressionStream('deflate'));
+  const zParsed = await parseLevelDat(zRaw);
+  ok(zParsed.oldName === 'Zlib World', 'zlib level.dat 应嗅探解压');
+  ok((await parseLevelDat(await buildLevelDat(zParsed, '压缩世界'))).oldName === '压缩世界', 'zlib 回写后应可再解析');
+
+
+  // ===== 压缩包内容解析器（NPC 对话和脚本）=====
+  const dialogues = await parseDialogues({ files: {
+    'dialogue/npc.json': { dir: false, async: async () => JSON.stringify({ 'minecraft:npc_dialogue': { scenes: [
+      { npc_name: 'Old Man', text: { rawtext: [{ text: 'Hello there' }] }, buttons: [{ name: 'Tell me more' }] },
+      { npc_name: { rawtext: [{ text: 'Raw Name' }] } }
+    ] } }) },
+    'other/plain.json': { dir: false, async: async () => '{"a":1}' }
+  } });
+  ok(dialogues.length >= 2, 'NPC 对话应提取文本和按钮名，非对话 JSON 跳过');
+  ok(extractScriptLiterals("const a = 'single'; world.sendMessage('Hello there world'); const t = 'pct 100%';").length === 1, '脚本启发式应只收多词字符串（跳过标识符与含 % 的）');
+
+
+  // ===== 术语匹配器：官方术语 zh_CN 且开关开启时启用 =====
+  ok(Array.isArray(window.OFFICIAL_GLOSSARY) && window.OFFICIAL_GLOSSARY.length > 1500, '官方术语表应有 1500+ 条，实际 ' + (window.OFFICIAL_GLOSSARY?.length ?? 0));
+  ok(['Sky', 'Light', 'Rose', 'Crops', 'Plum', 'Gold'].every((w) => !window.OFFICIAL_GLOSSARY.some(([en]) => en === w)), '官方术语应剔除歧义短词');
+  const matchers = getGlossaryMatchers('zh_CN');
+  ok(matchers.length > 1500, 'zh_CN 时应构建术语匹配器');
+  ok(state.scope.officialGlossary === true, '官方术语开关默认应开启');
+  ok(state.scope.misc === true && state.scope.signs === true && state.scope.books === true && state.scope.customNames === true, '世界细分开关（告示牌/书/自定义名称/杂项）应有默认状态');
+
+  // ===== .lang 多语言翻译结果与打包下载 =====
+  ok(langResultName('en_US.lang', 'zh_CN') === 'zh_CN.lang', '语言码格式文件名应直接替换语言码');
+  ok(langResultName('custom_pack.lang', 'ja_JP') === 'custom_pack_ja_JP.lang', '非语言码文件名应追加语言码');
+  ok(langResultName('notes.txt', 'zh_TW') === 'notes_zh_TW.txt', '.txt 结果应保持 .txt 后缀');
+  ok(bundleDefaultName('en_US.lang') === 'en_US_translations', '打包默认文件名应为 原名_translations');
+  // checks 经模板字面量 eval 执行，正则的反斜杠会被吃掉（\(\) 变分组、\[\] 变空字符类），文本断言一律用 includes 直查
+  ok(__src.includes('data-result-download') && __src.includes('data-result-delete'), '翻译结果应有单文件下载与删除按钮');
+  ok(__src.includes('id="bundle-download"') && __src.includes('打包下载'), '多语言结果应提供打包下载按钮');
+  ok(__src.includes('translations.length >= 2'), '仅翻译了多个语言时才显示打包下载');
+  ok(__src.includes('translations.findIndex(t => t.lang === targetLang)'), '同语言重复翻译应替换旧结果');
+  ok(__src.includes('translations: []'), '原文 entries 不应被翻译覆盖（翻译结果独立存储）');
+
+  console.log('自检通过：单文件模式、多语言翻译结果打包下载、level.dat 解析回写、NPC/脚本解析、官方术语表mai');
 })().catch((error) => { console.error(error.message); process.exit(1); });`;
 
-(0, eval)(src + checks);
+// 注：checks 在 eval 作用域内执行，访问不到模块局部变量，app.js 源码文本断言经 __src 提供
+globalThis.__src = src;
+(0, eval)(officialSrc + '\n' + src + '\n' + checks);

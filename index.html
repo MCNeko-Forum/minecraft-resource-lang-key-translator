@@ -4,13 +4,13 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>我的世界基岩版语言键值翻译器</title>
-  <meta name="description" content="我的世界基岩版语言键值翻译器：纯前端在线工具，上传 mcpack / mcaddon / zip 资源包或 lang / txt 语言文件，自动识别 texts 文件夹，一键翻译为 29 种官方语言，支持译文校对、§ 格式代码处理与打包下载，全程浏览器本地处理。">
-  <meta name="keywords" content="我的世界,Minecraft,基岩版,Bedrock,语言文件翻译,lang 文件,mcpack,mcaddon,zip,资源包汉化,texts 文件夹,languages.json,在线翻译工具,纯前端">
+  <meta name="description" content="我的世界基岩版语言键值翻译器：纯前端在线工具，上传 mcpack / mcaddon / mcworld / mctemplate / zip 或 lang / txt 语言文件，自动识别 texts 文件夹、manifest.json、NPC 对话与脚本文本，一键翻译为 29 种官方语言，支持译文校对与打包下载，全程浏览器本地处理。">
+  <meta name="keywords" content="我的世界,Minecraft,基岩版,Bedrock,语言文件翻译,lang 文件,mcpack,mcaddon,mcworld,mctemplate,资源包汉化,世界翻译,NPC 对话,manifest.json,texts 文件夹,languages.json,在线翻译工具,纯前端">
   <meta name="theme-color" content="#FFA500">
   <meta name="theme-color" content="#111318" media="(prefers-color-scheme: dark)">
   <meta property="og:type" content="website">
   <meta property="og:title" content="我的世界基岩版语言键值翻译器">
-  <meta property="og:description" content="上传 Minecraft 基岩版资源包或语言键值文件，自动识别 texts 文件夹并翻译成 29 种官方语言，支持校对与打包下载，全程本地处理。">
+  <meta property="og:description" content="上传 Minecraft 基岩版资源包、世界或语言键值文件，自动识别文本并翻译成 29 种官方语言，支持校对与打包下载，全程本地处理。">
   <meta property="og:site_name" content="MCNeko-Forum">
   <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🌐</text></svg>">
   <script type="text/javascript">
@@ -22,7 +22,7 @@
   </script>
   <script type="application/ld+json">
   {
-    "@context": "https://www.mcneko.com/tools/rp-translator/",
+    "@context": "https://schema.org",
     "@type": "WebApplication",
     "name": "我的世界基岩版语言键值翻译器",
     "url": "https://github.com/MCNeko-Forum/minecraft-resource-lang-key-translator",
@@ -30,7 +30,7 @@
     "operatingSystem": "Web",
     "inLanguage": "zh-CN",
     "isAccessibleForFree": true,
-    "description": "上传 Minecraft 基岩版资源包（mcpack/mcaddon/zip）或语言键值文件（lang/txt），自动识别 texts 文件夹并翻译成 29 种官方语言，支持译文校对与打包下载，全程浏览器本地处理。"
+    "description": "上传 Minecraft 基岩版资源包（mcpack/mcaddon/zip）、世界（mcworld/mctemplate）或语言键值文件（lang/txt），自动识别 texts 文件夹、manifest.json、NPC 对话与脚本文本并翻译成 29 种官方语言，支持校对与打包下载，全程浏览器本地处理。"
   }
   </script>
   <link rel="stylesheet" href="https://cdn.jsdmirror.com/npm/mdui@2/mdui.css">
@@ -49,97 +49,69 @@
   </mdui-top-app-bar>
 
   <main class="page-shell">
-    <mdui-tabs id="mode-tabs" value="archive">
-      <mdui-tab value="archive">整包模式</mdui-tab>
-      <mdui-tab value="archive-batch">整包模式（批量）</mdui-tab>
-      <mdui-tab value="single-file">单语言文件模式</mdui-tab>
-      <mdui-tab value="single-file-batch">单语言文件模式（批量）</mdui-tab>
-      <mdui-tab value="info">信息</mdui-tab>
-    </mdui-tabs>
+    <mdui-card class="import-card">
+      <div class="card-heading"><div><h1>导入文件</h1><p>一次上传一个文件：支持 .lang / .txt 语言文件、.mcpack / .mcaddon / .zip 资源包、.mcworld / .mctemplate 世界文件。</p></div><mdui-chip>本地优先</mdui-chip></div>
+      <input id="file-input" type="file" accept=".lang,.txt,.mcpack,.mcaddon,.zip,.mcworld,.mctemplate" hidden>
+      <mdui-button id="file-pick" variant="filled"><span class="material-icons" aria-hidden="true">upload_file</span>选择文件</mdui-button>
+      <span id="file-count" class="muted">尚未选择文件</span>
+    </mdui-card>
+    <div id="workspace" class="workspace"></div>
+  </main>
 
-    <section class="mode-panel" data-mode="archive">
-      <mdui-card class="import-card">
-        <div class="card-heading"><div><h1>导入资源包</h1><p>支持 .mcpack、.mcaddon、.zip，自动识别每个 texts 文件夹。</p></div><mdui-chip>本地优先</mdui-chip></div>
-        <input id="archive-input" type="file" accept=".mcpack,.mcaddon,.zip" hidden>
-        <mdui-button id="archive-pick" variant="filled"><span class="material-icons" aria-hidden="true">upload_file</span>选择资源包</mdui-button>
-        <span id="archive-name" class="muted">尚未选择文件</span>
-      </mdui-card>
-      <div id="archive-workspace" class="workspace"></div>
-    </section>
+  <mdui-dialog id="overwrite-dialog" close-on-overlay-click>
+    <span slot="headline">覆盖当前文件？</span>
+    <div id="overwrite-text">当前已有文件，是否覆盖？未保存的修改将会丢失。</div>
+    <mdui-button slot="action" variant="text" id="overwrite-cancel">取消</mdui-button>
+    <mdui-button slot="action" variant="filled" id="overwrite-confirm">覆盖</mdui-button>
+  </mdui-dialog>
+  <mdui-dialog id="settings-dialog" close-on-overlay-click close-on-esc>
+    <span slot="headline">设置</span>
+    <mdui-tabs id="settings-tabs" value="service" class="settings-tabs">
+      <mdui-tab value="service">翻译服务</mdui-tab>
+      <mdui-tab value="scope">翻译范围</mdui-tab>
+      <mdui-tab value="glossary">翻译术语</mdui-tab>
+      <mdui-tab value="about">关于</mdui-tab>
 
-    <section class="mode-panel" data-mode="archive-batch" hidden>
-      <mdui-card class="import-card">
-        <div class="card-heading"><div><h1>批量导入资源包</h1><p>一次选择多个 .mcpack、.mcaddon、.zip，每个包独立识别和翻译，最后统一打包下载。</p></div><mdui-chip>多包并行处理</mdui-chip></div>
-        <input id="archive-batch-input" type="file" accept=".mcpack,.mcaddon,.zip" multiple hidden>
-        <mdui-button id="archive-batch-pick" variant="filled"><span class="material-icons" aria-hidden="true">upload_file</span>批量选择资源包</mdui-button>
-        <span id="archive-batch-name" class="muted">尚未选择文件</span>
-      </mdui-card>
-      <div id="archive-batch-workspace" class="workspace"></div>
-    </section>
+      <mdui-tab-panel slot="panel" value="service" class="settings-panel">
+        <mdui-radio-group id="service-choice" value="client.edge">
+          <label class="service-option"><mdui-radio value="client.edge"></mdui-radio><span><strong>微软 Edge 接口（推荐）</strong><br><span class="muted">浏览器直连微软翻译，免服务器，速度快</span></span></label>
+          <label class="service-option"><mdui-radio value="translate.service"></mdui-radio><span><strong>开源公共服务</strong><br><span class="muted">api.translate.zvo.cn，负载高时易故障</span></span></label>
+        </mdui-radio-group>
+      </mdui-tab-panel>
 
-    <section class="mode-panel" data-mode="single-file" hidden>
-      <mdui-card class="import-card">
-        <div class="card-heading"><div><h1>导入语言键值文件</h1><p>单语言文件模式：一次处理一个 .lang 或 .txt 文件，不读取同目录其他文件。</p></div><mdui-chip>直接下载</mdui-chip></div>
-        <input id="single-input" type="file" accept=".lang,.txt" hidden>
-        <mdui-button id="single-pick" variant="filled"><span class="material-icons" aria-hidden="true">upload_file</span>选择语言文件</mdui-button>
-        <span id="single-name" class="muted">尚未选择文件</span>
-      </mdui-card>
-      <div id="single-workspace" class="workspace"></div>
-    </section>
+      <mdui-tab-panel slot="panel" value="scope" class="settings-panel">
+        <div class="scope-row"><span>语言文件（.lang / .txt）</span><mdui-switch data-scope="lang"></mdui-switch></div>
+        <div class="scope-row"><span>资源包信息（manifest.json）</span><mdui-switch data-scope="manifest"></mdui-switch></div>
+        <div class="scope-row"><span>世界：告示牌文本</span><mdui-switch data-scope="signs" disabled></mdui-switch></div>
+        <div class="scope-row"><span>世界：书与成书</span><mdui-switch data-scope="books" disabled></mdui-switch></div>
+        <div class="scope-row"><span>世界：自定义名称（实体与命名物品）</span><mdui-switch data-scope="customNames" disabled></mdui-switch></div>
+        <div class="scope-row"><span>世界：杂项（世界名称、命令方块、计分板）</span><mdui-switch data-scope="misc"></mdui-switch></div>
+        <div class="scope-row"><span>NPC 对话（dialogue 文件）</span><mdui-switch data-scope="npc"></mdui-switch></div>
+        <div class="scope-row"><span>脚本（scripts 内的文本字符串）</span><mdui-switch data-scope="scripts"></mdui-switch></div>
+        <p class="muted scope-note">告示牌、书、自定义名称、命令方块、计分板存放在世界的 LevelDB 数据库（db/ 文件夹）中，浏览器无法安全改写，暂不支持；当前世界翻译支持世界名称（level.dat 与 levelname.txt）</p>
+      </mdui-tab-panel>
 
-    <section class="mode-panel" data-mode="single-file-batch" hidden>
-      <mdui-card class="import-card">
-        <div class="card-heading"><div><h1>批量导入语言键值文件</h1><p>一次选择多个 .lang 或 .txt 文件，每个文件独立翻译，最后统一打包下载。</p></div><mdui-chip>批量翻译</mdui-chip></div>
-        <input id="single-batch-input" type="file" accept=".lang,.txt" multiple hidden>
-        <mdui-button id="single-batch-pick" variant="filled"><span class="material-icons" aria-hidden="true">upload_file</span>批量选择语言文件</mdui-button>
-        <span id="single-batch-name" class="muted">尚未选择文件</span>
-      </mdui-card>
-      <div id="single-batch-workspace" class="workspace"></div>
-    </section>
+      <mdui-tab-panel slot="panel" value="glossary" class="settings-panel">
+        <div class="scope-row"><span>官方 Minecraft 术语（zh_CN，词语级匹配）</span><mdui-switch data-scope="officialGlossary"></mdui-switch></div>
+        <p class="muted scope-note">官方术语提取自 Mojang bedrock-samples，仅在目标语言为简体中文时生效；下方自定义术语优先于官方术语，保存在本浏览器中</p>
+        <div id="glossary-list"></div>
+        <mdui-button variant="tonal" id="glossary-add"><span class="material-icons" aria-hidden="true">add</span>添加术语</mdui-button>
+      </mdui-tab-panel>
 
-    <section class="mode-panel" data-mode="info" hidden>
-      <mdui-card class="import-card">
-        <div class="card-heading"><div><h1>信息</h1><p>关于本工具的说明。</p></div></div>
+      <mdui-tab-panel slot="panel" value="about" class="settings-panel">
         <div class="info-list">
-          <p>基岩版语言键值翻译器：纯前端网页工具，上传 Minecraft 基岩版资源包（.mcpack / .mcaddon / .zip）或语言键值文件（.lang / .txt），自动识别 texts 文件夹并翻译成目标语言。</p>
+          <p>基岩版语言键值翻译器：纯前端网页工具，上传 Minecraft 基岩版资源包、世界文件或语言键值文件，自动识别文本内容并翻译成目标语言。</p>
           <p>翻译服务由 <a href="https://github.com/xnx3/translate" target="_blank" rel="noopener">xnx3/translate</a> 提供；界面基于 MDUI 2.x；所有文件处理均在浏览器本地完成，不上传服务器。</p>
           <p>支持 29 种基岩版官方语言；格式代码（§）可保留或删除；翻译结果支持校对修改后导出，languages.json 自动同步。</p>
           <p>本项目仓库：<a href="https://github.com/MCNeko-Forum/minecraft-resource-lang-key-translator" target="_blank" rel="noopener">MCNeko-Forum/minecraft-resource-lang-key-translator</a></p>
           <p>开源协议：<a href="https://opensource.org/license/mit" target="_blank" rel="noopener">MIT License</a></p>
         </div>
-      </mdui-card>
-    </section>
-  </main>
-
-  <mdui-dialog id="confirm-dialog" close-on-overlay-click>
-    <span slot="headline">确认删除语言文件</span>
-    <div id="confirm-text"></div>
-    <mdui-button slot="action" variant="text" id="cancel-delete">取消</mdui-button>
-    <mdui-button slot="action" variant="filled" id="confirm-delete">确认删除</mdui-button>
-  </mdui-dialog>
-  <mdui-dialog id="overwrite-dialog" close-on-overlay-click>
-    <span slot="headline">覆盖当前文件？</span>
-    <div id="overwrite-text"></div>
-    <mdui-button slot="action" variant="text" id="overwrite-cancel">取消</mdui-button>
-    <mdui-button slot="action" variant="filled" id="overwrite-confirm">覆盖</mdui-button>
-  </mdui-dialog>
-  <mdui-dialog id="batch-translate-dialog" close-on-overlay-click>
-    <span slot="headline">部分资源包已有目标语言</span>
-    <div>以下资源包已包含所选目标语言的文件，勾选后将覆盖（重新翻译），未勾选的包将跳过：</div>
-    <div id="batch-translate-list"></div>
-    <mdui-button slot="action" variant="text" id="batch-translate-cancel">取消</mdui-button>
-    <mdui-button slot="action" variant="filled" id="batch-translate-confirm">开始翻译</mdui-button>
-  </mdui-dialog>
-  <mdui-dialog id="settings-dialog" close-on-overlay-click close-on-esc>
-    <span slot="headline">设置</span>
-    <div class="glossary-editor">
-      <p class="muted">翻译术语表：翻译时原文术语将强制替换为指定译文（大小写不敏感），保存在本浏览器中</p>
-      <div id="glossary-list"></div>
-      <mdui-button variant="tonal" id="glossary-add"><span class="material-icons" aria-hidden="true">add</span>添加术语</mdui-button>
-    </div>
+      </mdui-tab-panel>
+    </mdui-tabs>
     <mdui-button slot="action" variant="text" id="settings-close">关闭</mdui-button>
   </mdui-dialog>
   <mdui-snackbar id="snackbar"></mdui-snackbar>
+  <script src="./static/js/glossary-official.js"></script>
   <script src="./static/js/app.js"></script>
 </body>
 </html>

@@ -25,20 +25,27 @@
 * { box-sizing: border-box; }
 /* 29 种语言的下拉菜单超出屏幕：限制高度并可滚动（menu part 即内部 mdui-menu） */
 mdui-select::part(menu) { max-height: min(360px, 60vh); overflow-y: auto; }
-.mode-panel[hidden] { display: none !important; }
 .material-icons { font-family: 'Material Icons'; font-size: 20px; line-height: 1; vertical-align: middle; }
 .spinning { animation: spin 1s linear infinite; }
 @keyframes spin { to { transform: rotate(360deg); } }
 body { margin: 0; background: var(--page-bg); color: var(--text); }
 mdui-top-app-bar { --mdui-color-surface: var(--card-bg); }
 .page-shell { width: min(1180px, calc(100% - 32px)); margin: 28px auto 64px; }
-mdui-tabs { margin-bottom: 20px; --mdui-color-primary: 178, 94, 0; }
-/* 深色模式下 #FFA500 直接可用，还原品牌本色 */
-:root.mdui-theme-dark mdui-tabs { --mdui-color-primary: 255, 165, 0; }
-/* 标签页强制单行 + 可横向滑动（4 个长文字 tab 在窄屏下不换行不挤压） */
-mdui-tabs::part(container) { flex-wrap: nowrap; overflow-x: auto; }
-mdui-tabs mdui-tab { flex-shrink: 0; white-space: nowrap; }
-.mode-panel { display: grid; gap: 18px; }
+/* 设置弹窗标签页：品牌主色 + 单行可横向滑动（4 个长文字 tab 在窄屏下不换行不挤压） */
+.settings-tabs { --mdui-color-primary: 178, 94, 0; }
+:root.mdui-theme-dark .settings-tabs { --mdui-color-primary: 255, 165, 0; }
+.settings-tabs::part(container) { flex-wrap: nowrap; overflow-x: auto; }
+.settings-tabs mdui-tab { flex-shrink: 0; white-space: nowrap; }
+.settings-panel { display: none; gap: 2px; margin-top: 8px; align-content: start; }
+.settings-panel[active] { display: grid; }
+/* 设置页开关行：左标签右开关，相邻行之间细分隔线 */
+.scope-row { display: flex; align-items: center; justify-content: space-between; gap: 16px; padding: 10px 4px; overflow-wrap: anywhere; }
+.scope-row + .scope-row { border-top: 1px solid var(--border); }
+.scope-note { margin-top: 10px; }
+/* 翻译服务单选行：单选钮与说明文字并排，点击整行可选中 */
+.service-option { display: flex; align-items: flex-start; gap: 12px; padding: 10px 4px; cursor: pointer; border-radius: 8px; }
+.service-option + .service-option { border-top: 1px solid var(--border); }
+.service-option mdui-radio { flex-shrink: 0; }
 .import-card, .group-card, .single-card, .export-card { padding: 22px; background: var(--card-bg); }
 .card-heading, .group-header, .file-row, .toolbar { display: flex; align-items: center; justify-content: space-between; gap: 16px; }
 .toolbar-actions { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
@@ -92,7 +99,27 @@ p, .muted { color: var(--muted); }
 @media (max-width: 640px) { #settings-dialog::part(panel) { width: 100vw; max-width: 100vw; height: 100dvh; max-height: 100dvh; border-radius: 0; margin: 0; } }
 /* 术语表编辑行：原文/译文并排，窄屏收缩不换行（避免 column+wrap 横移问题） */
 .glossary-editor { display: flex; flex-direction: column; gap: 10px; }
-#glossary-list { display: flex; flex-direction: column; gap: 6px; }
+#glossary-list { display: flex; flex-direction: column; gap: 6px; margin-top: 12px; max-height: 320px; overflow-y: auto; }
 .glossary-row { display: flex; align-items: center; gap: 8px; flex-wrap: nowrap; }
 .glossary-row mdui-text-field { flex: 1; min-width: 0; }
 .glossary-arrow { flex-shrink: 0; }
+/* 单文件工作区：语言/整包卡片与键值对编辑 */
+.lang-card, .archive-card, .results-card { padding: 22px; background: var(--card-bg); }
+.workspace .card-title { display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap; margin-bottom: 14px; }
+.workspace .card-actions { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.archive-summary { display: grid; gap: 8px; color: var(--muted); overflow-wrap: anywhere; }
+.pairs-container { display: grid; gap: 8px; }
+.pair-row { display: flex; align-items: center; gap: 10px; min-width: 0; }
+.pair-key { flex: 0 1 320px; min-width: 0; font-family: ui-monospace, Consolas, monospace; font-size: .85rem; color: var(--muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.pair-value { flex: 1; min-width: 0; padding: 7px 10px; border: 1px solid var(--border); border-radius: 8px; background: var(--page-bg); color: var(--text); font: inherit; }
+.pair-value:focus { outline: none; border-color: var(--primary); }
+/* 翻译结果列表：每种语言一个可折叠块 */
+.results-list { display: grid; gap: 10px; }
+.result-block { border: 1px solid var(--border); border-radius: 12px; min-width: 0; }
+.result-block > summary { display: flex; align-items: center; justify-content: space-between; gap: 10px; padding: 12px 14px; cursor: pointer; list-style: none; flex-wrap: wrap; }
+.result-block > summary::-webkit-details-marker { display: none; }
+.result-lang { font-weight: 600; overflow-wrap: anywhere; }
+.result-actions { display: flex; align-items: center; gap: 4px; }
+/* 多语言打包下载行：文件名输入框 + 按钮 */
+.bundle-row { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+.bundle-row mdui-text-field { width: 260px; max-width: 100%; }
